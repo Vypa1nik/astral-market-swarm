@@ -31,11 +31,19 @@ services:
       - ALL
     labels:
       - traefik.enable=true
+      - traefik.docker.network=traefik
       - traefik.http.routers.quantbot.rule=Host(`quantbot.sokezzz.com`)
       - traefik.http.routers.quantbot.entrypoints=websecure
       - traefik.http.routers.quantbot.tls.certresolver=letsencrypt
       - traefik.http.services.quantbot.loadbalancer.server.port=8080
+    networks:
+      - default
+      - traefik
 
 volumes:
   quantbot_state:
     name: quantbot_standalone_state
+
+networks:
+  traefik:
+    external: true
