@@ -171,14 +171,19 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--cyan); outline-
 .nav-label { padding: var(--space-2); color: var(--dim); font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
 .nav-list { display: grid; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
 .nav-item {
+  width: 100%;
   display: flex;
   align-items: center;
   gap: var(--space-3);
   padding: 11px var(--space-3);
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--muted);
+  cursor: pointer;
+  text-align: left;
 }
+.nav-item:hover { color: var(--text); background: rgba(77, 227, 232, .05); }
 .nav-item.active { border-color: rgba(77, 227, 232, .22); color: var(--cyan); background: rgba(77, 227, 232, .08); }
 .nav-icon { width: 20px; text-align: center; color: var(--cyan-soft); font-size: 15px; }
 .sidebar-foot { margin-top: auto; padding: var(--space-6) var(--space-2) 0; color: var(--dim); font-size: 10px; line-height: 1.7; }
@@ -333,24 +338,24 @@ td:first-child { color: var(--text); }
     <div class="brand"><div class="brand-mark" aria-hidden="true">A</div><div class="brand-copy"><strong>Astral</strong><small>market terminal</small></div></div>
     <div class="nav-label">Workspace</div>
     <nav><ul class="nav-list">
-      <li class="nav-item active"><span class="nav-icon" aria-hidden="true">◈</span><span>Overview</span></li>
-      <li class="nav-item"><span class="nav-icon" aria-hidden="true">⌁</span><span>Market pulse</span></li>
-      <li class="nav-item"><span class="nav-icon" aria-hidden="true">⌘</span><span>Signal engine</span></li>
-      <li class="nav-item"><span class="nav-icon" aria-hidden="true">▤</span><span>Paper ledger</span></li>
+      <li><button type="button" class="nav-item active" data-view="overview" data-target="view-overview" aria-current="page"><span class="nav-icon" aria-hidden="true">◈</span><span>Overview</span></button></li>
+      <li><button type="button" class="nav-item" data-view="market-pulse" data-target="view-market-pulse"><span class="nav-icon" aria-hidden="true">⌁</span><span>Market pulse</span></button></li>
+      <li><button type="button" class="nav-item" data-view="signal-engine" data-target="view-signal-engine"><span class="nav-icon" aria-hidden="true">⌘</span><span>Signal engine</span></button></li>
+      <li><button type="button" class="nav-item" data-view="paper-ledger" data-target="view-paper-ledger"><span class="nav-icon" aria-hidden="true">▤</span><span>Paper ledger</span></button></li>
     </ul></nav>
     <div class="nav-label" style="margin-top:32px">System</div>
     <ul class="nav-list">
-      <li class="nav-item"><span class="nav-icon" aria-hidden="true">◌</span><span>Data stream</span></li>
-      <li class="nav-item"><span class="nav-icon" aria-hidden="true">✓</span><span>Risk guard</span></li>
+      <li><button type="button" class="nav-item" data-view="data-stream" data-target="view-data-stream"><span class="nav-icon" aria-hidden="true">◌</span><span>Data stream</span></button></li>
+      <li><button type="button" class="nav-item" data-view="risk-guard" data-target="view-signal-engine"><span class="nav-icon" aria-hidden="true">✓</span><span>Risk guard</span></button></li>
     </ul>
     <div class="sidebar-foot">Read-only terminal<br>Paper execution boundary<br>Public market data</div>
   </aside>
   <header class="topbar">
-    <div class="crumbs"><strong>Overview</strong><span>/</span><span id="top-symbol">BTC/USDT</span></div>
+    <div class="crumbs"><strong id="current-view">Overview</strong><span>/</span><span id="top-symbol">BTC/USDT</span></div>
     <div class="live-strip"><span id="top-updated">sync pending</span><span class="live-dot" id="live-dot"></span><span class="status-pill" id="engine-status">LIVE · PAPER</span></div>
   </header>
   <main class="workspace">
-    <div class="hero-row"><div><div class="kicker">Astral Market Swarm · Control room</div><h1>Astral Terminal</h1></div><div class="hero-note">paper only · 5000 USDT demo cash · Causal paper engine monitoring public market data. No live orders, no leverage, no withdrawals.</div></div>
+    <div class="hero-row" id="view-overview" tabindex="-1"><div><div class="kicker">Astral Market Swarm · Control room</div><h1>Astral Terminal</h1></div><div class="hero-note">paper only · 5000 USDT demo cash · Causal paper engine monitoring public market data. No live orders, no leverage, no withdrawals.</div></div>
     <section class="kpi-grid" aria-label="Account and market summary">
       <article class="panel kpi"><div class="kpi-label">Paper equity</div><div class="kpi-value" id="kpi-equity">—</div><div class="kpi-sub good" id="kpi-equity-sub">USDT account value</div></article>
       <article class="panel kpi"><div class="kpi-label">Available cash</div><div class="kpi-value" id="kpi-cash">—</div><div class="kpi-sub">settled paper balance</div></article>
@@ -359,20 +364,20 @@ td:first-child { color: var(--text); }
       <article class="panel kpi"><div class="kpi-label">Bars processed</div><div class="kpi-value" id="kpi-bars">—</div><div class="kpi-sub" id="kpi-bars-sub">engine heartbeat</div></article>
     </section>
     <div class="content-grid">
-      <section class="panel chart-panel" aria-labelledby="price-heading">
+      <section class="panel chart-panel" id="view-data-stream" tabindex="-1" aria-labelledby="price-heading">
         <div class="panel-head"><div class="panel-title" id="price-heading">Price action · closed bars</div><div class="panel-meta" id="price-range">waiting for feed</div></div>
         <div class="chart-wrap"><svg class="chart-svg" id="price-chart" viewBox="0 0 900 310" role="img" aria-label="BTC USDT price action chart"><defs><linearGradient id="priceFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#4de3e8" stop-opacity=".35"/><stop offset="1" stop-color="#4de3e8" stop-opacity="0"/></linearGradient></defs><g id="price-grid"></g><path class="price-area" id="price-area" d=""></path><path class="price-line" id="price-line" d=""></path><circle class="price-dot" id="price-dot" cx="0" cy="0" r="5"></circle><text class="chart-axis" id="price-label" x="14" y="24">—</text></svg></div>
         <div class="chart-legend"><span class="legend-key"><i></i>BTC/USDT mark</span><span class="legend-key"><i class="amber"></i>closed candle stream</span><span class="legend-key"><i class="green"></i>paper equity below</span></div>
         <div class="chart-wrap" style="padding-top:0"><svg class="chart-svg small" id="equity-chart" viewBox="0 0 900 118" role="img" aria-label="Paper equity curve"><g id="equity-grid"></g><path class="equity-line" id="equity-line" d=""></path><text class="chart-axis" id="equity-label" x="14" y="20">equity · 5000 USDT</text></svg></div>
       </section>
       <div class="side-stack">
-        <section class="panel signal-panel" aria-labelledby="signal-heading"><div class="panel-head"><div class="panel-title" id="signal-heading">Signal engine</div><div class="panel-meta">causal</div></div><div class="signal-body"><div class="signal-badge" id="signal-badge">● monitoring</div><div class="signal-main" id="signal-main">No setup</div><div class="signal-detail" id="signal-detail">Waiting for a qualified EMA / RSI / ATR setup.</div></div></section>
-        <section class="panel" aria-labelledby="pulse-heading"><div class="panel-head"><div class="panel-title" id="pulse-heading">Market pulse</div><div class="panel-meta" id="pulse-meta">BTC/USDT</div></div><div class="pulse-grid"><div class="pulse-row"><span>Trend regime</span><div class="pulse-track"><span id="pulse-trend" style="width:38%"></span></div><span class="pulse-value" id="pulse-trend-value">—</span></div><div class="pulse-row"><span>Volatility</span><div class="pulse-track"><span class="amber" id="pulse-volatility" style="width:22%"></span></div><span class="pulse-value" id="pulse-volatility-value">—</span></div><div class="pulse-row"><span>Data health</span><div class="pulse-track"><span class="green" id="pulse-health" style="width:100%"></span></div><span class="pulse-value" id="pulse-health-value">OK</span></div></div></section>
+        <section class="panel signal-panel" id="view-signal-engine" tabindex="-1" aria-labelledby="signal-heading"><div class="panel-head"><div class="panel-title" id="signal-heading">Signal engine</div><div class="panel-meta">causal</div></div><div class="signal-body"><div class="signal-badge" id="signal-badge">● monitoring</div><div class="signal-main" id="signal-main">No setup</div><div class="signal-detail" id="signal-detail">Waiting for a qualified EMA / RSI / ATR setup.</div></div></section>
+        <section class="panel" id="view-market-pulse" tabindex="-1" aria-labelledby="pulse-heading"><div class="panel-head"><div class="panel-title" id="pulse-heading">Market pulse</div><div class="panel-meta" id="pulse-meta">BTC/USDT</div></div><div class="pulse-grid"><div class="pulse-row"><span>Trend regime</span><div class="pulse-track"><span id="pulse-trend" style="width:38%"></span></div><span class="pulse-value" id="pulse-trend-value">—</span></div><div class="pulse-row"><span>Volatility</span><div class="pulse-track"><span class="amber" id="pulse-volatility" style="width:22%"></span></div><span class="pulse-value" id="pulse-volatility-value">—</span></div><div class="pulse-row"><span>Data health</span><div class="pulse-track"><span class="green" id="pulse-health" style="width:100%"></span></div><span class="pulse-value" id="pulse-health-value">OK</span></div></div></section>
       </div>
     </div>
     <div class="lower-grid">
       <section class="panel" aria-labelledby="activity-heading"><div class="panel-head"><div class="panel-title" id="activity-heading">Activity feed</div><div class="panel-meta" id="activity-meta">paper journal</div></div><div class="table-wrap"><table><thead><tr><th>Time</th><th>Type</th><th>Event</th><th>Detail</th></tr></thead><tbody id="activity-rows"><tr><td colspan="4" class="empty-row">Loading engine activity…</td></tr></tbody></table></div></section>
-      <section class="panel" aria-labelledby="ledger-heading"><div class="panel-head"><div class="panel-title" id="ledger-heading">Paper ledger</div><div class="panel-meta">isolated · 5000 USDT</div></div><div class="chart-wrap"><div class="pulse-grid" style="padding:0"><div class="pulse-row"><span>Account</span><span class="pulse-value" id="ledger-account">astral-demo-5000-usdt</span><span></span></div><div class="pulse-row"><span>Execution</span><span class="pulse-value" id="ledger-mode">PAPER ONLY</span><span></span></div><div class="pulse-row"><span>Interval</span><span class="pulse-value" id="ledger-interval">5m</span><span></span></div><div class="pulse-row"><span>Refresh</span><span class="pulse-value">10 sec</span><span></span></div><div class="pulse-row"><span>Last bar</span><span class="pulse-value" id="ledger-last-bar">—</span><span></span></div></div></div></section>
+      <section class="panel" id="view-paper-ledger" tabindex="-1" aria-labelledby="ledger-heading"><div class="panel-head"><div class="panel-title" id="ledger-heading">Paper ledger</div><div class="panel-meta">isolated · 5000 USDT</div></div><div class="chart-wrap"><div class="pulse-grid" style="padding:0"><div class="pulse-row"><span>Account</span><span class="pulse-value" id="ledger-account">astral-demo-5000-usdt</span><span></span></div><div class="pulse-row"><span>Execution</span><span class="pulse-value" id="ledger-mode">PAPER ONLY</span><span></span></div><div class="pulse-row"><span>Interval</span><span class="pulse-value" id="ledger-interval">5m</span><span></span></div><div class="pulse-row"><span>Refresh</span><span class="pulse-value">10 sec</span><span></span></div><div class="pulse-row"><span>Last bar</span><span class="pulse-value" id="ledger-last-bar">—</span><span></span></div></div></div></section>
     </div>
     <div class="footer-bar"><span>ASTRAL / READ-ONLY PAPER TERMINAL / PUBLIC DATA</span><span id="footer-refresh">Next sync in 10.0s</span></div>
     <div id="refresh-announcer" aria-live="polite">Dashboard is loading.</div>
@@ -546,6 +551,32 @@ td:first-child { color: var(--text); }
       nextRefresh = 10;
     }
   };
+  const wireNavigation = () => {
+    const viewNames = {
+      overview: "Overview",
+      "market-pulse": "Market pulse",
+      "signal-engine": "Signal engine",
+      "paper-ledger": "Paper ledger",
+      "data-stream": "Data stream",
+      "risk-guard": "Risk guard",
+    };
+    document.querySelectorAll("[data-view][data-target]").forEach((button) => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll("[data-view]").forEach((item) => {
+          item.classList.toggle("active", item === button);
+          if (item === button) item.setAttribute("aria-current", "page");
+          else item.removeAttribute("aria-current");
+        });
+        text("current-view", viewNames[button.dataset.view] || "Overview");
+        const target = byId(button.dataset.target);
+        if (target) {
+          target.scrollIntoView({ behavior: "smooth", block: "start" });
+          target.focus({ preventScroll: true });
+        }
+      });
+    });
+  };
+  wireNavigation();
   render(dashboard);
   refreshDashboard();
   setInterval(refreshDashboard, 10000);

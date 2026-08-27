@@ -139,6 +139,13 @@ def test_terminal_dashboard_shell_declares_live_refresh_and_chart_regions(tmp_pa
             html = response.read().decode()
 
         assert 'class="terminal-shell"' in html
+        assert 'class="nav-item active"' in html
+        assert 'data-view="overview"' in html
+        assert 'data-view="market-pulse"' in html
+        assert 'data-view="signal-engine"' in html
+        assert 'data-view="paper-ledger"' in html
+        assert "scrollIntoView" in html
+        assert "aria-current" in html
         assert 'id="price-chart"' in html
         assert 'id="equity-chart"' in html
         assert "Astral Terminal" in html
