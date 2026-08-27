@@ -31,6 +31,21 @@ uv run mypy src
 
 The exchange adapter is intentionally selected after the core engine is tested; no exchange API key belongs in this repository.
 
+## Hostinger deployment boundary
+
+The intended public hostname is `quantbot.sokezzz.com`. Deployment must be performed as a new Compose project and volume after a read-only inventory of the Hostinger host:
+
+```text
+docker ps -a
+docker network ls
+docker inspect <existing-service> --format '{{json .Config.Labels}}'
+docker inspect <existing-service> --format '{{json .HostConfig.Binds}}'
+```
+
+Do not reuse an existing directory, volume, container, network namespace, `.env`, or process. Build on the Linux host, create the new DNS record only after the target IP is confirmed, and verify old container IDs/start times before and after deployment. The Compose file exposes only read-only health/state routes; it has no kill/resume API.
+
+Cloudflare credentials are deliberately absent from Git. Use a narrowly scoped DNS-edit token from the deployment operator's secret store. Never paste it into source, logs, or a public report.
+
 ## Research references
 
 - Freqtrade: https://github.com/freqtrade/freqtrade

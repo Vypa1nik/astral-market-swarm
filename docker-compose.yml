@@ -1,0 +1,41 @@
+name: astral-market-swarm
+
+services:
+  quantbot:
+    build:
+      context: .
+    container_name: quantbot-standalone
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env
+    environment:
+      PORT: "8080"
+      STATE_DB: /app/state/orders.sqlite3
+      DEMO_CASH: "5000"
+      DISPLAY_CURRENCY: EUR
+      SYMBOL: BTC/USDT
+      INTERVAL: 5m
+      LOOKBACK: "250"
+      POLL_SECONDS: "300"
+    ports:
+      - "127.0.0.1:8089:8080"
+    volumes:
+      - quantbot_state:/app/state
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.quantbot.rule=Host(`quantbot.sokezzz.com`)
+      - traefik.http.routers.quantbot.entrypoints=websecure
+      - traefik.http.routers.quantbot.tls.certresolver=letsencrypt
+      - traefik.http.services.quantbot.loadbalancer.server.port=8080
+
+volumes:
+  quantbot_state:
+    name: quantbot_standalone_state
