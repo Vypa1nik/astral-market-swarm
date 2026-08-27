@@ -32,6 +32,23 @@ uv run mypy src
 
 The exchange adapter is intentionally selected after the core engine is tested; no exchange API key belongs in this repository.
 
+## Historical research
+
+The research runner fetches closed public Binance spot klines and writes an auditable JSON report. It includes the dataset SHA-256, in-sample metrics, a flat-start out-of-sample window, rolling walk-forward windows, and optimistic/baseline/stress execution-cost scenarios.
+
+```bash
+uv run python scripts/run_research.py \
+  --symbol BTCUSDT \
+  --interval 1d \
+  --limit 1000 \
+  --ema-period 50 \
+  --rsi-recovery 50 \
+  --max-signal-age-minutes 2880 \
+  --output reports/candidate-1d.json
+```
+
+The report is research-only. A positive return with a small trade count is not a promotion criterion, and this command never changes the paper or live runtime configuration.
+
 ## Hostinger deployment boundary
 
 The intended public hostname is `quantbot.sokezzz.com`. Deployment must be performed as a new Compose project and volume after a read-only inventory of the Hostinger host:

@@ -77,13 +77,23 @@ def _trade_from_exit(
     )
 
 
-def run_backtest(candles: list[Candle], config: BacktestConfig) -> BacktestResult:
-    """Run the same causal signal logic against deterministic simulated fills."""
+def run_backtest(
+    candles: list[Candle],
+    config: BacktestConfig,
+    execution_start: int = 0,
+    execution_end: int | None = None,
+) -> BacktestResult:
+    """Run causal signal logic with an optional flat execution window."""
 
     if not candles:
         raise ValueError("candles must not be empty")
     ordered = validate_dataset(candles, candles[0].symbol, config.interval)
-    manifest = build_manifest(ordered, ordered[0].symbol, config.timeframe)
+    if execution_end is None:
+        execution_end = len(ordered)
+    if not 0 <= execution_start < execution_end <= len(ordered):
+        raise ValueError("execution window must be inside the dataset")
+    simulated = ordered[:execution_end]
+    manifest = build_manifest(simulated, simulated[0].symbol, config.timeframe)
     signals = generate_signals(ordered, config.strategy)
     cash = config.initial_cash
     position: _OpenPosition | None = None
@@ -93,8 +103,8 @@ def run_backtest(candles: list[Candle], config: BacktestConfig) -> BacktestResul
     total_fees = Decimal("0")
     peak_equity = config.initial_cash
 
-    for index, candle in enumerate(ordered):
-        if pending_signal is not None:
+    for index, candle in enumerate(simulated):
+        if index >= execution_start and pending_signal is not None:
             signal = pending_signal
             if signal.action is Action.ENTER_LONG and position is None:
                 if signal.stop_price is None or signal.take_profit_price is None:
@@ -188,14 +198,15 @@ def run_backtest(candles: list[Candle], config: BacktestConfig) -> BacktestResul
                     total_fees += fill.fee
                     position = None
 
-        current_signal = signals[index]
-        if (
-            current_signal.action is Action.ENTER_LONG
-            and position is None
-            or current_signal.action is Action.EXIT_LONG
-            and position is not None
-        ):
-            pending_signal = current_signal
+        if index >= execution_start:
+            current_signal = signals[index]
+            if (
+                current_signal.action is Action.ENTER_LONG
+                and position is None
+                or current_signal.action is Action.EXIT_LONG
+                and position is not None
+            ):
+                pending_signal = current_signal
 
         equity = cash if position is None else cash + position.quantity * candle.close
         equity_curve.append(equity)
@@ -206,7 +217,7 @@ def run_backtest(candles: list[Candle], config: BacktestConfig) -> BacktestResul
         trades,
         config.initial_cash,
         ordered[0].close,
-        ordered[-1].close,
+        simulated[-1].close,
         total_fees,
     )
     return BacktestResult(manifest, tuple(trades), tuple(equity_curve), metrics)
