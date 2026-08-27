@@ -97,10 +97,13 @@ class StandalonePaperBot:
         self._executor = PaperExecutor(config.demo_cash, order_store)
         self._last_candle_timestamp: datetime | None = None
         self._last_candle: Candle | None = None
+        self._recent_candles: tuple[Candle, ...] = ()
         self._pending_signal: StrategySignal | None = None
         self._processed_bars = 0
         self._last_signal = "not started"
         self._last_error: str | None = None
+        self._equity_history: list[dict[str, str]] = []
+        self._activity: list[dict[str, str]] = []
 
     def tick(self, now: datetime | None = None) -> BotState:
         """Process exactly one new closed candle, if the source has one."""
@@ -117,6 +120,7 @@ class StandalonePaperBot:
         if len(candles) < 2:
             raise ValueError("at least two closed candles are required")
         latest = candles[-1]
+        self._recent_candles = tuple(candles[-180:])
         if (
             self._last_candle_timestamp is not None
             and latest.timestamp <= self._last_candle_timestamp
@@ -145,7 +149,26 @@ class StandalonePaperBot:
         self._last_candle = latest
         self._processed_bars += 1
         self._last_error = None
-        return self.snapshot()
+        state = self.snapshot()
+        self._equity_history.append(
+            {
+                "timestamp": latest.timestamp.isoformat(),
+                "equity": str(state.equity),
+                "cash": str(state.cash),
+                "position_quantity": str(state.position_quantity),
+            }
+        )
+        self._equity_history = self._equity_history[-180:]
+        self._activity.append(
+            {
+                "timestamp": latest.timestamp.isoformat(),
+                "kind": "bar",
+                "message": f"processed closed {self._config.interval} bar",
+                "detail": self._last_signal,
+            }
+        )
+        self._activity = self._activity[-40:]
+        return state
 
     def _execute_pending(self, signal: StrategySignal, candle: Candle) -> Fill | None:
         account = self._executor.account(candle)
@@ -217,6 +240,68 @@ class StandalonePaperBot:
             equity=equity,
             position_quantity=position_quantity,
         )
+
+    def dashboard_dict(self, now: datetime | None = None) -> dict[str, object]:
+        """Return the read-only projection consumed by the terminal dashboard."""
+
+        current_time = now or datetime.now(UTC)
+        state = self.snapshot()
+        latest = self._last_candle
+        latest_payload: dict[str, str] | None = None
+        if latest is not None:
+            latest_payload = self._candle_dict(latest)
+        price_history = [self._candle_dict(candle) for candle in self._recent_candles]
+        marked_price = latest.close if latest is not None else Decimal("0")
+        position_notional = state.position_quantity * marked_price
+        activity = list(self._activity)
+        if not activity and latest is None:
+            activity = [
+                {
+                    "timestamp": current_time.astimezone(UTC).isoformat(),
+                    "kind": "engine",
+                    "message": "waiting for first closed bar",
+                    "detail": "paper loop is online",
+                }
+            ]
+        return {
+            "schema_version": 1,
+            "refresh_interval_ms": 10000,
+            "server_time": current_time.astimezone(UTC).isoformat(),
+            "last_updated": state.last_candle_timestamp.isoformat()
+            if state.last_candle_timestamp
+            else None,
+            "account_id": state.account_id,
+            "mode": state.mode,
+            "paper_only": True,
+            "demo_cash": str(state.demo_cash),
+            "display_currency": state.display_currency,
+            "symbol": state.symbol,
+            "interval": state.interval,
+            "processed_bars": state.processed_bars,
+            "last_signal": state.last_signal,
+            "last_error": state.last_error,
+            "cash": str(state.cash),
+            "equity": str(state.equity),
+            "position": {
+                "quantity": str(state.position_quantity),
+                "notional": str(position_notional),
+            },
+            "latest_candle": latest_payload,
+            "price_history": price_history,
+            "equity_history": list(self._equity_history),
+            "activity": activity,
+        }
+
+    @staticmethod
+    def _candle_dict(candle: Candle) -> dict[str, str]:
+        return {
+            "timestamp": candle.timestamp.isoformat(),
+            "open": str(candle.open),
+            "high": str(candle.high),
+            "low": str(candle.low),
+            "close": str(candle.close),
+            "volume": str(candle.volume),
+        }
 
     def record_error(self, error: Exception) -> None:
         """Expose a bounded diagnostic in the read-only status endpoint."""
