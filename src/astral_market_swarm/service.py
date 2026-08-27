@@ -31,7 +31,7 @@ class BotServiceConfig:
     interval: str = "5m"
     lookback: int = 250
     demo_cash: Decimal = Decimal("5000")
-    display_currency: str = "EUR"
+    display_currency: str = "USDT"
     strategy: StrategyConfig = field(default_factory=StrategyConfig)
     risk: RiskConfig = field(default_factory=RiskConfig)
 
@@ -203,7 +203,7 @@ class StandalonePaperBot:
             equity = account.equity
             position_quantity = account.positions.get(self._config.symbol, Decimal("0"))
         return BotState(
-            account_id="astral-demo-5000",
+            account_id="astral-demo-5000-usdt",
             mode="paper",
             demo_cash=self._config.demo_cash,
             display_currency=self._config.display_currency,

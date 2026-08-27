@@ -9,6 +9,7 @@ This repository does **not** import, read, start, stop, or share runtime state w
 ## Safety status
 
 - Spot only in v1; no leverage and no shorting.
+- Paper account starts with 5,000 virtual USDT; no real funds are connected.
 - Paper/testnet first; live orders are not enabled by default.
 - No hard-coded backtest metrics.
 - Every order must pass the risk gate.

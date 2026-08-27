@@ -41,7 +41,7 @@ def build_bot() -> StandalonePaperBot:
             interval=interval,
             lookback=lookback,
             demo_cash=_env_decimal("DEMO_CASH", "5000"),
-            display_currency=os.getenv("DISPLAY_CURRENCY", "EUR"),
+            display_currency=os.getenv("DISPLAY_CURRENCY", "USDT"),
         ),
     )
 

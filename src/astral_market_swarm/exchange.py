@@ -21,9 +21,9 @@ class ExecutionMode(Enum):
 @dataclass(frozen=True, slots=True)
 class RuntimeConfig:
     mode: ExecutionMode = ExecutionMode.PAPER
-    account_id: str = "astral-demo-5000"
+    account_id: str = "astral-demo-5000-usdt"
     demo_cash: Decimal = Decimal("5000")
-    display_currency: str = "EUR"
+    display_currency: str = "USDT"
 
     def __post_init__(self) -> None:
         if not self.account_id.strip():

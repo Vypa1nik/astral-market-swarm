@@ -13,7 +13,7 @@ services:
       PORT: "8080"
       STATE_DB: /app/state/orders.sqlite3
       DEMO_CASH: "5000"
-      DISPLAY_CURRENCY: EUR
+      DISPLAY_CURRENCY: USDT
       SYMBOL: BTC/USDT
       INTERVAL: 5m
       LOOKBACK: "250"

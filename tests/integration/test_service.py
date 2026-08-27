@@ -53,6 +53,7 @@ def test_paper_bot_processes_bars_with_5000_demo_account(tmp_path: object) -> No
         store,
         BotServiceConfig(
             demo_cash=Decimal("5000"),
+            display_currency="USDT",
             strategy=StrategyConfig(
                 ema_period=2,
                 rsi_period=2,

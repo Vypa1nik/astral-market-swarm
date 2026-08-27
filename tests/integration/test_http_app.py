@@ -43,6 +43,7 @@ def test_read_only_health_and_state_endpoints(tmp_path: object) -> None:
 
         assert health == {"ok": True, "service": "astral-market-swarm", "mode": "paper"}
         assert state["demo_cash"] == "5000"
+        assert state["display_currency"] == "USDT"
         assert state["paper_only"] == "true"
         assert "Astral Market Swarm" in html
         assert "paper only" in html

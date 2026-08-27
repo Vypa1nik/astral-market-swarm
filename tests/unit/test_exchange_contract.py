@@ -11,7 +11,7 @@ def test_runtime_defaults_to_isolated_paper_mode() -> None:
 
     assert config.mode is ExecutionMode.PAPER
     assert config.demo_cash == Decimal("5000")
-    assert config.account_id == "astral-demo-5000"
+    assert config.account_id == "astral-demo-5000-usdt"
 
 
 def test_live_mode_is_rejected_in_v1() -> None:

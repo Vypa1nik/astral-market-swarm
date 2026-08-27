@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-27
 **Status:** Approved by user
-**Target:** One crypto spot exchange, paper/testnet first
+**Target:** One crypto spot exchange, paper/testnet first, 5,000 virtual USDT
 **Isolation:** New independent repository; existing local bots are out of scope
 
 ## Purpose
