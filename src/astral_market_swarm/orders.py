@@ -1,0 +1,205 @@
+"""Durable order intent and state transitions."""
+
+from __future__ import annotations
+
+import hashlib
+import sqlite3
+from dataclasses import dataclass
+from datetime import datetime
+from decimal import Decimal
+from enum import Enum
+
+
+class OrderState(Enum):
+    CREATED = "created"
+    SUBMITTED = "submitted"
+    ACKNOWLEDGED = "acknowledged"
+    PARTIALLY_FILLED = "partially_filled"
+    FILLED = "filled"
+    CANCELLED = "cancelled"
+    REJECTED = "rejected"
+    UNKNOWN = "unknown"
+
+
+class OrderStateError(ValueError):
+    """Raised for missing orders or invalid order state transitions."""
+
+
+_TRANSITIONS: dict[OrderState, frozenset[OrderState]] = {
+    OrderState.CREATED: frozenset({OrderState.SUBMITTED, OrderState.CANCELLED, OrderState.UNKNOWN}),
+    OrderState.SUBMITTED: frozenset(
+        {
+            OrderState.ACKNOWLEDGED,
+            OrderState.PARTIALLY_FILLED,
+            OrderState.FILLED,
+            OrderState.CANCELLED,
+            OrderState.REJECTED,
+            OrderState.UNKNOWN,
+        }
+    ),
+    OrderState.ACKNOWLEDGED: frozenset(
+        {
+            OrderState.PARTIALLY_FILLED,
+            OrderState.FILLED,
+            OrderState.CANCELLED,
+            OrderState.REJECTED,
+            OrderState.UNKNOWN,
+        }
+    ),
+    OrderState.PARTIALLY_FILLED: frozenset(
+        {
+            OrderState.PARTIALLY_FILLED,
+            OrderState.FILLED,
+            OrderState.CANCELLED,
+            OrderState.UNKNOWN,
+        }
+    ),
+    OrderState.UNKNOWN: frozenset(
+        {
+            OrderState.ACKNOWLEDGED,
+            OrderState.PARTIALLY_FILLED,
+            OrderState.FILLED,
+            OrderState.CANCELLED,
+            OrderState.REJECTED,
+        }
+    ),
+    OrderState.FILLED: frozenset(),
+    OrderState.CANCELLED: frozenset(),
+    OrderState.REJECTED: frozenset(),
+}
+
+
+@dataclass(frozen=True, slots=True)
+class OrderRecord:
+    order_id: str
+    client_order_id: str
+    symbol: str
+    side: str
+    quantity: Decimal
+    state: OrderState
+    created_at: datetime
+    updated_at: datetime
+    exchange_order_id: str | None
+    filled_quantity: Decimal
+
+
+class OrderStore:
+    """Small SQLite-backed order journal for one isolated bot namespace."""
+
+    def __init__(self, path: str) -> None:
+        self._connection = sqlite3.connect(path)
+        self._connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS orders (
+                order_id TEXT PRIMARY KEY,
+                client_order_id TEXT NOT NULL UNIQUE,
+                symbol TEXT NOT NULL,
+                side TEXT NOT NULL,
+                quantity TEXT NOT NULL,
+                state TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                exchange_order_id TEXT,
+                filled_quantity TEXT NOT NULL
+            )
+            """
+        )
+        self._connection.commit()
+
+    def create_intent(
+        self,
+        order_id: str,
+        client_order_id: str,
+        symbol: str,
+        side: str,
+        quantity: Decimal,
+        created_at: datetime,
+    ) -> None:
+        if quantity <= 0 or created_at.tzinfo is None or created_at.utcoffset() is None:
+            raise ValueError("quantity must be positive and created_at must be timezone-aware")
+        timestamp = created_at.isoformat()
+        try:
+            self._connection.execute(
+                """
+                INSERT INTO orders (
+                    order_id, client_order_id, symbol, side, quantity, state,
+                    created_at, updated_at, exchange_order_id, filled_quantity
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+                """,
+                (
+                    order_id,
+                    client_order_id,
+                    symbol,
+                    side,
+                    str(quantity),
+                    OrderState.CREATED.value,
+                    timestamp,
+                    timestamp,
+                    "0",
+                ),
+            )
+            self._connection.commit()
+        except sqlite3.IntegrityError as error:
+            self._connection.rollback()
+            raise OrderStateError("order intent already exists") from error
+
+    def get(self, order_id: str) -> OrderRecord:
+        row = self._connection.execute(
+            "SELECT order_id, client_order_id, symbol, side, quantity, state, created_at, "
+            "updated_at, exchange_order_id, filled_quantity FROM orders WHERE order_id = ?",
+            (order_id,),
+        ).fetchone()
+        if row is None:
+            raise OrderStateError(f"order not found: {order_id}")
+        return OrderRecord(
+            order_id=row[0],
+            client_order_id=row[1],
+            symbol=row[2],
+            side=row[3],
+            quantity=Decimal(row[4]),
+            state=OrderState(row[5]),
+            created_at=datetime.fromisoformat(row[6]),
+            updated_at=datetime.fromisoformat(row[7]),
+            exchange_order_id=row[8],
+            filled_quantity=Decimal(row[9]),
+        )
+
+    def transition(
+        self,
+        order_id: str,
+        new_state: OrderState,
+        exchange_order_id: str | None = None,
+        filled_quantity: Decimal | None = None,
+    ) -> OrderRecord:
+        current = self.get(order_id)
+        if new_state not in _TRANSITIONS[current.state]:
+            raise OrderStateError(f"invalid transition: {current.state.value} -> {new_state.value}")
+        filled = current.filled_quantity if filled_quantity is None else filled_quantity
+        if filled < current.filled_quantity or filled > current.quantity:
+            raise OrderStateError("filled quantity is outside order bounds")
+        if new_state is OrderState.FILLED and filled != current.quantity:
+            raise OrderStateError("filled state requires the full quantity")
+        updated_at = datetime.now(current.updated_at.tzinfo)
+        self._connection.execute(
+            "UPDATE orders SET state = ?, updated_at = ?, "
+            "exchange_order_id = COALESCE(?, exchange_order_id), "
+            "filled_quantity = ? WHERE order_id = ?",
+            (new_state.value, updated_at.isoformat(), exchange_order_id, str(filled), order_id),
+        )
+        self._connection.commit()
+        return self.get(order_id)
+
+    def retry_allowed(self, order_id: str) -> bool:
+        return self.get(order_id).state is OrderState.CREATED
+
+    def close(self) -> None:
+        self._connection.close()
+
+
+def deterministic_client_order_id(symbol: str, side: str, timestamp: datetime) -> str:
+    """Build a stable, bounded ID for idempotent broker submission."""
+
+    if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+        raise ValueError("timestamp must be timezone-aware")
+    payload = f"{symbol}|{side}|{timestamp.isoformat()}".encode()
+    return f"ams-{hashlib.sha256(payload).hexdigest()[:28]}"
