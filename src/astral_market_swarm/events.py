@@ -27,6 +27,15 @@ class Candle:
         if self.timestamp.tzinfo != UTC:
             object.__setattr__(self, "timestamp", self.timestamp.astimezone(UTC))
 
+        for field_name in ("open", "high", "low", "close", "volume"):
+            try:
+                value = Decimal(str(getattr(self, field_name)))
+            except (ArithmeticError, ValueError) as error:
+                raise ValueError(f"{field_name} must be a decimal number") from error
+            if not value.is_finite():
+                raise ValueError(f"{field_name} must be finite")
+            object.__setattr__(self, field_name, value)
+
         prices = (self.open, self.high, self.low, self.close)
         if any(price <= 0 for price in prices):
             raise ValueError("OHLC prices must be positive")
