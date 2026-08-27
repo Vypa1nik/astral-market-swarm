@@ -52,3 +52,19 @@ def test_paper_executor_rejects_buy_without_cash(tmp_path: object) -> None:
         executor.submit(order, bar(NOW, "100"))
 
     assert store.get("buy-2").state is OrderState.REJECTED
+
+
+def test_paper_account_persists_across_executor_restart(tmp_path: object) -> None:
+    database = str(tmp_path / "orders.sqlite3")
+    first_store = OrderStore(database)
+    first_executor = PaperExecutor(Decimal("5000"), first_store)
+    order = Order("buy-3", "BTC/USDT", OrderSide.BUY, OrderType.MARKET, Decimal("1"))
+    first_executor.submit(order, bar(NOW))
+    first_store.close()
+
+    second_store = OrderStore(database)
+    second_executor = PaperExecutor(Decimal("5000"), second_store)
+
+    account = second_executor.account(bar(NOW))
+    assert account.positions["BTC/USDT"] == Decimal("1")
+    assert account.cash < Decimal("5000")

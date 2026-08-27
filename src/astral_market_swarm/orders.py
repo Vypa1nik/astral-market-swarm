@@ -104,6 +104,14 @@ class OrderStore:
             )
             """
         )
+        self._connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS paper_account_state (
+                state_key TEXT PRIMARY KEY,
+                state_value TEXT NOT NULL
+            )
+            """
+        )
         self._connection.commit()
 
     def create_intent(
@@ -191,6 +199,40 @@ class OrderStore:
 
     def retry_allowed(self, order_id: str) -> bool:
         return self.get(order_id).state is OrderState.CREATED
+
+    def load_paper_account(
+        self,
+        initial_cash: Decimal,
+    ) -> tuple[Decimal, dict[str, Decimal]]:
+        cash_row = self._connection.execute(
+            "SELECT state_value FROM paper_account_state WHERE state_key = 'cash'"
+        ).fetchone()
+        cash = initial_cash if cash_row is None else Decimal(cash_row[0])
+        rows = self._connection.execute(
+            "SELECT state_key, state_value FROM paper_account_state "
+            "WHERE state_key LIKE 'position:%'"
+        ).fetchall()
+        positions = {
+            row[0].removeprefix("position:"): Decimal(row[1])
+            for row in rows
+            if Decimal(row[1]) != 0
+        }
+        return cash, positions
+
+    def save_paper_account(self, cash: Decimal, positions: dict[str, Decimal]) -> None:
+        self._connection.execute(
+            "INSERT INTO paper_account_state(state_key, state_value) VALUES('cash', ?) "
+            "ON CONFLICT(state_key) DO UPDATE SET state_value = excluded.state_value",
+            (str(cash),),
+        )
+        self._connection.execute(
+            "DELETE FROM paper_account_state WHERE state_key LIKE 'position:%'"
+        )
+        self._connection.executemany(
+            "INSERT INTO paper_account_state(state_key, state_value) VALUES(?, ?)",
+            [(f"position:{symbol}", str(quantity)) for symbol, quantity in positions.items()],
+        )
+        self._connection.commit()
 
     def close(self) -> None:
         self._connection.close()

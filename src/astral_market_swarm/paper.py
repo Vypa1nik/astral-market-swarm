@@ -33,10 +33,9 @@ class PaperExecutor:
     ) -> None:
         if initial_cash <= 0:
             raise ValueError("initial_cash must be positive")
-        self._cash = initial_cash
-        self._positions: dict[str, Decimal] = {}
         self._order_store = order_store
         self._fill_model = fill_model or FillModel()
+        self._cash, self._positions = order_store.load_paper_account(initial_cash)
 
     def submit(self, order: Order, candle: Candle) -> Fill:
         """Persist intent, simulate a fill, then update paper account state."""
@@ -82,6 +81,7 @@ class PaperExecutor:
                 self._positions[order.symbol] = remaining
             else:
                 self._positions.pop(order.symbol, None)
+        self._order_store.save_paper_account(self._cash, self._positions)
 
         self._order_store.transition(order.order_id, OrderState.ACKNOWLEDGED)
         final_state = (
