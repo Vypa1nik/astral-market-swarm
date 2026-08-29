@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, feature/* ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+    
+    - name: Set up Python
+      run: uv python install 3.11
+    
+    - name: Install dependencies
+      run: uv sync --extra dev
+    
+    - name: Run linting
+      run: |
+        uv run ruff check src tests
+        uv run ruff format --check src tests
+    
+    - name: Run type checking
+      run: uv run mypy src
+    
+    - name: Run tests
+      run: uv run pytest -v --cov=src --cov-report=xml --cov-report=term
+    
+    - name: Upload coverage
+      uses: codecov/codecov-action@v4
+      if: always()
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: false
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Build Docker image
+      run: docker build -t astral-market-swarm:test .
+    
+    - name: Test Docker image
+      run: |
+        docker run -d --name test-container \
+          -e SYMBOL=BTC/USDT \
+          -e INTERVAL=5m \
+          astral-market-swarm:test
+        
+        sleep 10
+        
+        docker logs test-container
+        
+        # Check health endpoint
+        docker exec test-container python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"
+        
+        docker stop test-container

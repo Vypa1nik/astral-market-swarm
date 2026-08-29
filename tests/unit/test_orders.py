@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from decimal import Decimal
+from threading import Thread
 
 import pytest
 
@@ -39,6 +40,24 @@ def test_order_store_rejects_invalid_transition(tmp_path: object) -> None:
 
     with pytest.raises(OrderStateError, match="transition"):
         store.transition("local-2", OrderState.FILLED)
+
+
+def test_order_store_can_be_read_from_http_worker_thread(tmp_path: object) -> None:
+    store = OrderStore(str(tmp_path / "threaded-orders.sqlite3"))
+    store.create_intent("threaded-1", "ams-threaded-1", "BTC/USDT", "buy", Decimal("0.1"), NOW)
+    errors: list[Exception] = []
+
+    def read_from_worker() -> None:
+        try:
+            assert store.get("threaded-1").state is OrderState.CREATED
+        except Exception as error:  # noqa: BLE001 - capture cross-thread regression
+            errors.append(error)
+
+    thread = Thread(target=read_from_worker)
+    thread.start()
+    thread.join(timeout=2)
+
+    assert errors == []
 
 
 def test_reconciliation_resolves_unknown_without_resubmitting(tmp_path: object) -> None:

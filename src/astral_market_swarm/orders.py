@@ -4,10 +4,16 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
+from threading import RLock
+from typing import Concatenate, ParamSpec, TypeVar
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 class OrderState(Enum):
@@ -69,6 +75,16 @@ _TRANSITIONS: dict[OrderState, frozenset[OrderState]] = {
 }
 
 
+def _locked(
+    method: Callable[Concatenate[OrderStore, P], R],
+) -> Callable[Concatenate[OrderStore, P], R]:
+    def wrapper(self: OrderStore, /, *args: P.args, **kwargs: P.kwargs) -> R:
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper
+
+
 @dataclass(frozen=True, slots=True)
 class OrderRecord:
     order_id: str
@@ -87,7 +103,8 @@ class OrderStore:
     """Small SQLite-backed order journal for one isolated bot namespace."""
 
     def __init__(self, path: str) -> None:
-        self._connection = sqlite3.connect(path)
+        self._lock = RLock()
+        self._connection = sqlite3.connect(path, check_same_thread=False, timeout=30)
         self._connection.execute(
             """
             CREATE TABLE IF NOT EXISTS orders (
@@ -114,6 +131,7 @@ class OrderStore:
         )
         self._connection.commit()
 
+    @_locked
     def create_intent(
         self,
         order_id: str,
@@ -151,6 +169,7 @@ class OrderStore:
             self._connection.rollback()
             raise OrderStateError("order intent already exists") from error
 
+    @_locked
     def get(self, order_id: str) -> OrderRecord:
         row = self._connection.execute(
             "SELECT order_id, client_order_id, symbol, side, quantity, state, created_at, "
@@ -172,6 +191,7 @@ class OrderStore:
             filled_quantity=Decimal(row[9]),
         )
 
+    @_locked
     def transition(
         self,
         order_id: str,
@@ -197,9 +217,11 @@ class OrderStore:
         self._connection.commit()
         return self.get(order_id)
 
+    @_locked
     def retry_allowed(self, order_id: str) -> bool:
         return self.get(order_id).state is OrderState.CREATED
 
+    @_locked
     def load_paper_account(
         self,
         initial_cash: Decimal,
@@ -207,6 +229,7 @@ class OrderStore:
         cash, positions, _borrowed = self.load_paper_account_state(initial_cash)
         return cash, positions
 
+    @_locked
     def load_paper_account_state(
         self,
         initial_cash: Decimal,
@@ -235,6 +258,7 @@ class OrderStore:
         }
         return cash, positions, borrowed
 
+    @_locked
     def save_paper_account(
         self,
         cash: Decimal,
@@ -263,6 +287,7 @@ class OrderStore:
             )
         self._connection.commit()
 
+    @_locked
     def close(self) -> None:
         self._connection.close()
 

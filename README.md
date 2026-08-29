@@ -20,16 +20,55 @@ This repository does **not** import, read, start, stop, or share runtime state w
 
 `market data → data QA → event-driven backtest → strategy → risk gate → order state machine → paper/testnet adapter → reconciliation → audit/monitoring`
 
-## Development
+## Quick Start
 
-```text
-Python 3.11+
+### Local Development
+
+```bash
+# Install dependencies
 uv sync --extra dev
+
+# Run tests
 uv run pytest -q
+
+# Run linting and type checking
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy src
+
+# Start paper trading
+uv run python -m astral_market_swarm.app
 ```
+
+### Docker Deployment
+
+```bash
+# Build and start the container
+docker-compose up -d
+
+# Check logs
+docker-compose logs -f
+
+# Check health
+curl http://localhost:8080/health
+
+# Stop
+docker-compose down
+```
+
+### Configuration
+
+Create a `.env` file (optional, defaults provided):
+
+```env
+SYMBOL=BTC/USDT
+INTERVAL=5m
+DEMO_CASH=5000
+LOOKBACK=250
+POLL_SECONDS=300
+```
+
+See [PIPELINE_SCHEMA.md](./PIPELINE_SCHEMA.md) for full architecture details.
 
 The exchange adapter is intentionally selected after the core engine is tested; no exchange API key belongs in this repository.
 

@@ -1,23 +1,43 @@
+# Astral Market Swarm — Standalone Trading Engine
 FROM python:3.11-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+# Install uv for fast dependency resolution
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
+# Set working directory
 WORKDIR /app
 
-COPY pyproject.toml uv.lock README.md ./
+# Copy dependency files first (cache layer)
+COPY pyproject.toml uv.lock ./
+
+# Install dependencies
+RUN uv sync --frozen --no-dev
+
+# Copy source code
 COPY src ./src
+COPY scripts ./scripts
 
-RUN pip install --no-cache-dir . \
-    && useradd --create-home --uid 10001 --shell /usr/sbin/nologin appuser \
-    && mkdir -p /app/state \
-    && chown -R appuser:appuser /app
+# Create state directory
+RUN mkdir -p /app/state /app/reports /app/logs
 
-USER appuser
+# Environment defaults (override at runtime)
+ENV DEMO_CASH=5000 \
+    DISPLAY_CURRENCY=USDT \
+    SYMBOL=BTC/USDT \
+    INTERVAL=5m \
+    LOOKBACK=250 \
+    POLL_SECONDS=300 \
+    PORT=8080 \
+    STATE_DB=/app/state/orders.sqlite3 \
+    BINANCE_PUBLIC_BASE_URL=https://api.binance.com/api/v3 \
+    PYTHONUNBUFFERED=1
 
+# Expose HTTP API port
 EXPOSE 8080
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD python -c "from urllib.request import urlopen; urlopen('http://127.0.0.1:8080/api/health', timeout=3)"
+# Health check (ping /health endpoint)
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" || exit 1
 
-ENTRYPOINT ["python", "-m", "astral_market_swarm.app"]
+# Run the paper trading runtime
+CMD ["uv", "run", "python", "-m", "astral_market_swarm.app"]
