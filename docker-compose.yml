@@ -11,7 +11,7 @@ services:
       # Trading configuration
       SYMBOL: ${SYMBOL:-BTC/USDT}
       INTERVAL: ${INTERVAL:-5m}
-      DEMO_CASH: ${DEMO_CASH:-5000}
+      DEMO_CASH: ${DEMO_CASH:-10000}
       DISPLAY_CURRENCY: ${DISPLAY_CURRENCY:-USDT}
       
       # Strategy parameters

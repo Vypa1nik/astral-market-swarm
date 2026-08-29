@@ -355,7 +355,7 @@ td:first-child { color: var(--text); }
     <div class="live-strip"><span id="top-updated">sync pending</span><span class="live-dot" id="live-dot"></span><span class="status-pill" id="engine-status">LIVE · PAPER</span></div>
   </header>
   <main class="workspace">
-    <div class="hero-row" id="view-overview" tabindex="-1"><div><div class="kicker">Astral Market Swarm · Control room</div><h1>Astral Terminal</h1></div><div class="hero-note">paper only · 5000 USDT demo cash · Causal paper engine monitoring public market data. No live orders. Paper leverage is simulated only.</div></div>
+    <div class="hero-row" id="view-overview" tabindex="-1"><div><div class="kicker">Astral Market Swarm · Control room</div><h1>Astral Terminal</h1></div><div class="hero-note">paper only · 10000 USDT demo cash · Causal paper engine monitoring public market data. No live orders. Paper leverage is simulated only.</div></div>
     <section class="kpi-grid" aria-label="Account and market summary">
       <article class="panel kpi"><div class="kpi-label">Paper equity</div><div class="kpi-value" id="kpi-equity">—</div><div class="kpi-sub good" id="kpi-equity-sub">USDT account value</div></article>
       <article class="panel kpi"><div class="kpi-label">Available cash</div><div class="kpi-value" id="kpi-cash">—</div><div class="kpi-sub">settled paper balance</div></article>
