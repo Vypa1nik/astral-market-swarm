@@ -70,6 +70,28 @@ def test_paper_account_persists_across_executor_restart(tmp_path: object) -> Non
     assert account.cash < Decimal("5000")
 
 
+def test_flat_paper_account_stays_flat_after_restart(tmp_path: object) -> None:
+    database = str(tmp_path / "flat-after-exit.sqlite3")
+    store = OrderStore(database)
+    executor = PaperExecutor(Decimal("5000"), store, leverage=Decimal("3"))
+    executor.submit(
+        Order("buy-flat", "BTC/USDT", OrderSide.BUY, OrderType.MARKET, Decimal("1")),
+        bar(NOW),
+    )
+    executor.submit(
+        Order("sell-flat", "BTC/USDT", OrderSide.SELL, OrderType.MARKET, Decimal("1")),
+        bar(NOW + timedelta(minutes=5), "101"),
+    )
+    store.close()
+
+    restarted_store = OrderStore(database)
+    restarted = PaperExecutor(Decimal("5000"), restarted_store, leverage=Decimal("3"))
+    account = restarted.account(bar(NOW + timedelta(minutes=5), "101"))
+
+    assert account.positions.get("BTC/USDT", Decimal("0")) == Decimal("0")
+    assert account.borrowed_notional == Decimal("0")
+
+
 def test_paper_executor_supports_bounded_leveraged_margin_and_repayment(
     tmp_path: object,
 ) -> None:

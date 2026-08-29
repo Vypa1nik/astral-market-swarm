@@ -12,7 +12,7 @@ from .fills import Fill, Order, OrderSide, OrderType
 from .orders import OrderStore
 from .paper import PaperExecutor
 from .risk import RiskConfig, RiskContext, RiskRejected, size_entry
-from .strategy import Action, StrategyConfig, StrategySignal, generate_signals
+from .strategy import Action, StrategyConfig, StrategySignal, generate_latest_signal
 
 
 class CandleSource(Protocol):
@@ -176,10 +176,13 @@ class StandalonePaperBot:
             self._execute_pending(self._pending_signal, latest)
             self._pending_signal = None
 
-        signals = generate_signals(candles, self._config.strategy)
-        current_signal = signals[-1]
         account = self._executor.account(latest)
         position_quantity = account.positions.get(self._config.symbol, Decimal("0"))
+        current_signal = generate_latest_signal(
+            candles,
+            self._config.strategy,
+            in_position=position_quantity > 0,
+        )
         if (
             current_signal.action is Action.ENTER_LONG
             and position_quantity == 0
@@ -224,8 +227,13 @@ class StandalonePaperBot:
             context = RiskContext(
                 equity=account.equity,
                 cash=account.cash,
-                gross_exposure=Decimal("0"),
-                peak_equity=max(self._config.demo_cash, account.equity),
+                gross_exposure=account.borrowed_notional + position_quantity * candle.close,
+                peak_equity=max(
+                    [
+                        self._config.demo_cash,
+                        *(Decimal(item["equity"]) for item in self._equity_history),
+                    ]
+                ),
                 daily_pnl=account.equity - self._config.demo_cash,
                 signal_timestamp=signal.timestamp,
                 now=candle.timestamp,

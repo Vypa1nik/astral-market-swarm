@@ -241,3 +241,54 @@ def generate_signals(
         signals.append(StrategySignal(candle.timestamp, Action.HOLD, candle.close, "no setup"))
 
     return tuple(signals)
+
+
+def generate_latest_signal(
+    candles: Sequence[Candle],
+    config: StrategyConfig,
+    in_position: bool,
+) -> StrategySignal:
+    """Evaluate only the latest bar using the executor's real position state."""
+
+    if not candles:
+        raise ValueError("candles must not be empty")
+    signals = generate_signals(candles, config)
+    latest = signals[-1]
+    if in_position:
+        if latest.action is Action.EXIT_LONG:
+            return latest
+        return StrategySignal(candles[-1].timestamp, Action.HOLD, candles[-1].close, "in position")
+    if latest.action is Action.ENTER_LONG:
+        return latest
+    if len(candles) < 2:
+        return latest
+    closes = tuple(candle.close for candle in candles)
+    ema = _ema(closes, config.ema_period)[-1]
+    atr = _atr(candles, config.atr_period)[-1]
+    if ema is None or atr is None or candles[-1].close <= ema:
+        return StrategySignal(candles[-1].timestamp, Action.HOLD, candles[-1].close, "no setup")
+    previous_rsi = _rsi(closes, config.rsi_period)[-2]
+    current_rsi = _rsi(closes, config.rsi_period)[-1]
+    recovery = (
+        previous_rsi is not None
+        and current_rsi is not None
+        and previous_rsi <= config.rsi_recovery
+        and current_rsi > config.rsi_recovery
+    )
+    momentum = candles[-1].close > candles[-2].close
+    entry_ready = recovery if config.entry_mode == "recovery" else momentum
+    if not entry_ready:
+        return StrategySignal(candles[-1].timestamp, Action.HOLD, candles[-1].close, "no setup")
+    stop = candles[-1].close - atr * config.atr_stop_multiple
+    take_profit = candles[-1].close + atr * config.take_profit_multiple
+    if stop <= 0:
+        return StrategySignal(candles[-1].timestamp, Action.HOLD, candles[-1].close, "invalid stop")
+    mode_name = "RSI recovery" if config.entry_mode == "recovery" else "momentum"
+    return StrategySignal(
+        candles[-1].timestamp,
+        Action.ENTER_LONG,
+        candles[-1].close,
+        f"EMA regime + {mode_name}",
+        stop,
+        take_profit,
+    )

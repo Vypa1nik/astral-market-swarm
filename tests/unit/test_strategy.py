@@ -5,7 +5,12 @@ import pytest
 
 from astral_market_swarm.events import Candle
 from astral_market_swarm.risk import RiskConfig, RiskContext, RiskRejected, size_entry
-from astral_market_swarm.strategy import Action, StrategyConfig, generate_signals
+from astral_market_swarm.strategy import (
+    Action,
+    StrategyConfig,
+    generate_latest_signal,
+    generate_signals,
+)
 
 START = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -68,6 +73,16 @@ def test_momentum_mode_emits_a_causal_breakout_entry() -> None:
     assert any(signal.action is Action.ENTER_LONG for signal in signals)
     entry = next(signal for signal in signals if signal.action is Action.ENTER_LONG)
     assert entry.reason == "EMA regime + momentum"
+
+
+def test_latest_signal_does_not_inherit_historical_position_when_runtime_is_flat() -> None:
+    data = candles(["100", "101", "102", "103", "104"])
+    config = StrategyConfig(ema_period=2, rsi_period=2, atr_period=2, entry_mode="momentum")
+
+    signal = generate_latest_signal(data, config, in_position=False)
+
+    assert signal.action is Action.ENTER_LONG
+    assert signal.reason == "EMA regime + momentum"
 
 
 def context(**overrides: object) -> RiskContext:

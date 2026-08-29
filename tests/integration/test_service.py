@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -94,3 +94,39 @@ def test_paper_blast_profile_is_explicitly_leveraged_and_capped() -> None:
 def test_unknown_profile_fails_closed() -> None:
     with pytest.raises(ValueError, match="unknown strategy profile"):
         profile_config("live-blast")
+
+
+def test_paper_blast_runtime_fills_causally_on_next_closed_bar(tmp_path: object) -> None:
+    data = [
+        Candle(
+            symbol="BTC/USDT",
+            timestamp=START + timedelta(minutes=5 * index),
+            open=Decimal(str(100 + index)),
+            high=Decimal(str(102 + index)),
+            low=Decimal(str(99 + index)),
+            close=Decimal(str(101 + index)),
+            volume=Decimal("100"),
+        )
+        for index in range(30)
+    ]
+    source = FakeSource([data[:25], data[:26]])
+    profile = profile_config("paper-blast")
+    config = BotServiceConfig(
+        demo_cash=Decimal("5000"),
+        display_currency="USDT",
+        strategy_profile=profile.strategy_profile,
+        strategy=profile.strategy,
+        risk=profile.risk,
+    )
+    store = OrderStore(str(tmp_path / "blast-runtime.sqlite3"))
+    bot = StandalonePaperBot(source, store, config)
+
+    bot.tick(data[24].timestamp)
+    state = bot.tick(data[25].timestamp)
+
+    assert state.strategy_profile == "paper-blast"
+    assert state.position_quantity > 0
+    assert state.borrowed_notional > 0
+    dashboard = bot.dashboard_dict()
+    assert any(item["message"] == "paper entry filled" for item in dashboard["activity"])
+    assert state.last_error is None

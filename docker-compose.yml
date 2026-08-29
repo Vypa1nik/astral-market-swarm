@@ -17,7 +17,7 @@ services:
       SYMBOL: BTC/USDT
       INTERVAL: 5m
       LOOKBACK: "250"
-      POLL_SECONDS: "300"
+      POLL_SECONDS: ${POLL_SECONDS:-60}
       STRATEGY_PROFILE: ${STRATEGY_PROFILE:-conservative}
     ports:
       - "127.0.0.1:8089:8080"
