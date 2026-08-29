@@ -10,7 +10,7 @@ from threading import Event, Thread
 
 from .binance_public import BinancePublicData
 from .orders import OrderStore
-from .service import BotServiceConfig, StandalonePaperBot
+from .service import BotServiceConfig, StandalonePaperBot, profile_config
 from .web import create_http_server
 
 
@@ -29,6 +29,7 @@ def build_bot() -> StandalonePaperBot:
     interval = os.getenv("INTERVAL", "5m")
     lookback = int(os.getenv("LOOKBACK", "250"))
     state_db = os.getenv("STATE_DB", "/app/state/orders.sqlite3")
+    profile = profile_config(os.getenv("STRATEGY_PROFILE", "conservative"))
     source = BinancePublicData(
         os.getenv("BINANCE_PUBLIC_BASE_URL", "https://api.binance.com/api/v3")
     )
@@ -42,6 +43,9 @@ def build_bot() -> StandalonePaperBot:
             lookback=lookback,
             demo_cash=_env_decimal("DEMO_CASH", "5000"),
             display_currency=os.getenv("DISPLAY_CURRENCY", "USDT"),
+            strategy_profile=profile.strategy_profile,
+            strategy=profile.strategy,
+            risk=profile.risk,
         ),
     )
 

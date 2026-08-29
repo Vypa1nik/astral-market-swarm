@@ -355,7 +355,7 @@ td:first-child { color: var(--text); }
     <div class="live-strip"><span id="top-updated">sync pending</span><span class="live-dot" id="live-dot"></span><span class="status-pill" id="engine-status">LIVE · PAPER</span></div>
   </header>
   <main class="workspace">
-    <div class="hero-row" id="view-overview" tabindex="-1"><div><div class="kicker">Astral Market Swarm · Control room</div><h1>Astral Terminal</h1></div><div class="hero-note">paper only · 5000 USDT demo cash · Causal paper engine monitoring public market data. No live orders, no leverage, no withdrawals.</div></div>
+    <div class="hero-row" id="view-overview" tabindex="-1"><div><div class="kicker">Astral Market Swarm · Control room</div><h1>Astral Terminal</h1></div><div class="hero-note">paper only · 5000 USDT demo cash · Causal paper engine monitoring public market data. No live orders. Paper leverage is simulated only.</div></div>
     <section class="kpi-grid" aria-label="Account and market summary">
       <article class="panel kpi"><div class="kpi-label">Paper equity</div><div class="kpi-value" id="kpi-equity">—</div><div class="kpi-sub good" id="kpi-equity-sub">USDT account value</div></article>
       <article class="panel kpi"><div class="kpi-label">Available cash</div><div class="kpi-value" id="kpi-cash">—</div><div class="kpi-sub">settled paper balance</div></article>
@@ -377,7 +377,7 @@ td:first-child { color: var(--text); }
     </div>
     <div class="lower-grid">
       <section class="panel" aria-labelledby="activity-heading"><div class="panel-head"><div class="panel-title" id="activity-heading">Activity feed</div><div class="panel-meta" id="activity-meta">paper journal</div></div><div class="table-wrap"><table><thead><tr><th>Time</th><th>Type</th><th>Event</th><th>Detail</th></tr></thead><tbody id="activity-rows"><tr><td colspan="4" class="empty-row">Loading engine activity…</td></tr></tbody></table></div></section>
-      <section class="panel" id="view-paper-ledger" tabindex="-1" aria-labelledby="ledger-heading"><div class="panel-head"><div class="panel-title" id="ledger-heading">Paper ledger</div><div class="panel-meta">isolated · 5000 USDT</div></div><div class="chart-wrap"><div class="pulse-grid" style="padding:0"><div class="pulse-row"><span>Account</span><span class="pulse-value" id="ledger-account">astral-demo-5000-usdt</span><span></span></div><div class="pulse-row"><span>Execution</span><span class="pulse-value" id="ledger-mode">PAPER ONLY</span><span></span></div><div class="pulse-row"><span>Interval</span><span class="pulse-value" id="ledger-interval">5m</span><span></span></div><div class="pulse-row"><span>Refresh</span><span class="pulse-value">10 sec</span><span></span></div><div class="pulse-row"><span>Last bar</span><span class="pulse-value" id="ledger-last-bar">—</span><span></span></div></div></div></section>
+      <section class="panel" id="view-paper-ledger" tabindex="-1" aria-labelledby="ledger-heading"><div class="panel-head"><div class="panel-title" id="ledger-heading">Paper ledger</div><div class="panel-meta">isolated · 5000 USDT</div></div><div class="chart-wrap"><div class="pulse-grid" style="padding:0"><div class="pulse-row"><span>Account</span><span class="pulse-value" id="ledger-account">astral-demo-5000-usdt</span><span></span></div><div class="pulse-row"><span>Execution</span><span class="pulse-value" id="ledger-mode">PAPER ONLY</span><span></span></div><div class="pulse-row"><span>Profile</span><span class="pulse-value" id="ledger-profile">conservative</span><span></span></div><div class="pulse-row"><span>Paper leverage</span><span class="pulse-value" id="ledger-leverage">1x</span><span></span></div><div class="pulse-row"><span>Borrowed notional</span><span class="pulse-value" id="ledger-borrowed">0 USDT</span><span></span></div><div class="pulse-row"><span>Interval</span><span class="pulse-value" id="ledger-interval">5m</span><span></span></div><div class="pulse-row"><span>Refresh</span><span class="pulse-value">10 sec</span><span></span></div><div class="pulse-row"><span>Last bar</span><span class="pulse-value" id="ledger-last-bar">—</span><span></span></div></div></div></section>
     </div>
     <div class="footer-bar"><span>ASTRAL / READ-ONLY PAPER TERMINAL / PUBLIC DATA</span><span id="footer-refresh">Next sync in 10.0s</span></div>
     <div id="refresh-announcer" aria-live="polite">Dashboard is loading.</div>
@@ -515,9 +515,13 @@ td:first-child { color: var(--text); }
     text("price-range", rangeText(history));
     text("pulse-meta", data.symbol || "BTC/USDT");
     text("signal-main", data.last_signal || "No setup");
-    text("signal-detail", error || "EMA / RSI / ATR hypothesis is monitoring closed bars.");
+    text("signal-badge", `${(data.strategy_profile || "conservative").replace("paper-", "")} · ${data.leverage || "1"}x simulated`);
+    text("signal-detail", error || `${data.entry_mode || "recovery"} entry mode is monitoring closed bars. Paper leverage only; no live orders.`);
     text("ledger-account", data.account_id);
     text("ledger-mode", data.paper_only ? "PAPER ONLY" : "UNKNOWN");
+    text("ledger-profile", data.strategy_profile || "conservative");
+    text("ledger-leverage", `${data.leverage || "1"}x simulated`);
+    text("ledger-borrowed", `${number(data.borrowed_notional, 2)} USDT`);
     text("ledger-interval", data.interval);
     text("ledger-last-bar", data.last_updated ? shortTime(data.last_updated) : "—");
     const trend = history.length > 1 ? Number(history[history.length - 1].close) - Number(history[0].close) : 0;

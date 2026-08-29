@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Protocol
 
@@ -32,6 +32,7 @@ class BotServiceConfig:
     lookback: int = 250
     demo_cash: Decimal = Decimal("5000")
     display_currency: str = "USDT"
+    strategy_profile: str = "conservative"
     strategy: StrategyConfig = field(default_factory=StrategyConfig)
     risk: RiskConfig = field(default_factory=RiskConfig)
 
@@ -44,6 +45,40 @@ class BotServiceConfig:
             raise ValueError("demo_cash must be positive")
         if not self.display_currency.strip():
             raise ValueError("display_currency must not be empty")
+        if not self.strategy_profile.strip():
+            raise ValueError("strategy_profile must not be empty")
+
+
+def profile_config(profile: str) -> BotServiceConfig:
+    """Return an explicit paper profile; unknown profiles fail closed."""
+
+    normalized = profile.strip().lower()
+    if normalized == "conservative":
+        return BotServiceConfig(strategy_profile=normalized)
+    if normalized == "paper-blast":
+        return BotServiceConfig(
+            strategy_profile=normalized,
+            strategy=StrategyConfig(
+                ema_period=20,
+                rsi_period=14,
+                atr_period=14,
+                rsi_recovery=Decimal("50"),
+                atr_stop_multiple=Decimal("1.5"),
+                take_profit_multiple=Decimal("2"),
+                max_hold_bars=12,
+                entry_mode="momentum",
+            ),
+            risk=RiskConfig(
+                risk_per_trade=Decimal("0.01"),
+                max_position_fraction=Decimal("1.5"),
+                max_gross_exposure_fraction=Decimal("1.5"),
+                max_daily_loss=Decimal("0.08"),
+                max_drawdown=Decimal("0.25"),
+                max_signal_age=timedelta(minutes=15),
+                leverage=Decimal("3"),
+            ),
+        )
+    raise ValueError(f"unknown strategy profile: {profile}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +87,9 @@ class BotState:
     mode: str
     demo_cash: Decimal
     display_currency: str
+    strategy_profile: str
+    leverage: Decimal
+    borrowed_notional: Decimal
     symbol: str
     interval: str
     processed_bars: int
@@ -69,6 +107,9 @@ class BotState:
             "paper_only": "true",
             "demo_cash": str(self.demo_cash),
             "display_currency": self.display_currency,
+            "strategy_profile": self.strategy_profile,
+            "leverage": str(self.leverage),
+            "borrowed_notional": str(self.borrowed_notional),
             "symbol": self.symbol,
             "interval": self.interval,
             "processed_bars": self.processed_bars,
@@ -94,7 +135,11 @@ class StandalonePaperBot:
     ) -> None:
         self._source = candle_source
         self._config = config
-        self._executor = PaperExecutor(config.demo_cash, order_store)
+        self._executor = PaperExecutor(
+            config.demo_cash,
+            order_store,
+            leverage=config.risk.leverage,
+        )
         self._last_candle_timestamp: datetime | None = None
         self._last_candle: Candle | None = None
         self._recent_candles: tuple[Candle, ...] = ()
@@ -189,6 +234,7 @@ class StandalonePaperBot:
                 decision = size_entry(candle.open, signal.stop_price, context, self._config.risk)
             except RiskRejected as error:
                 self._last_signal = f"risk rejected: {error}"
+                self._record_activity("risk", "entry rejected", self._last_signal, candle)
                 return None
             order = Order(
                 order_id=f"entry-{candle.timestamp.isoformat()}",
@@ -199,6 +245,7 @@ class StandalonePaperBot:
             )
             fill = self._executor.submit(order, candle)
             self._last_signal = f"entry filled: {fill.quantity} @ {fill.price}"
+            self._record_activity("trade", "paper entry filled", self._last_signal, candle)
             return fill
 
         if signal.action is Action.EXIT_LONG and position_quantity > 0:
@@ -211,6 +258,7 @@ class StandalonePaperBot:
             )
             fill = self._executor.submit(order, candle)
             self._last_signal = f"exit filled: {fill.quantity} @ {fill.price}"
+            self._record_activity("trade", "paper exit filled", self._last_signal, candle)
             return fill
         self._last_signal = "pending signal skipped"
         return None
@@ -220,16 +268,21 @@ class StandalonePaperBot:
             cash = self._config.demo_cash
             equity = cash
             position_quantity = Decimal("0")
+            borrowed_notional = Decimal("0")
         else:
             account = self._executor.account(self._last_candle)
             cash = account.cash
             equity = account.equity
             position_quantity = account.positions.get(self._config.symbol, Decimal("0"))
+            borrowed_notional = account.borrowed_notional
         return BotState(
             account_id="astral-demo-5000-usdt",
             mode="paper",
             demo_cash=self._config.demo_cash,
             display_currency=self._config.display_currency,
+            strategy_profile=self._config.strategy_profile,
+            leverage=self._config.risk.leverage,
+            borrowed_notional=borrowed_notional,
             symbol=self._config.symbol,
             interval=self._config.interval,
             processed_bars=self._processed_bars,
@@ -275,6 +328,10 @@ class StandalonePaperBot:
             "paper_only": True,
             "demo_cash": str(state.demo_cash),
             "display_currency": state.display_currency,
+            "strategy_profile": state.strategy_profile,
+            "leverage": str(state.leverage),
+            "borrowed_notional": str(state.borrowed_notional),
+            "entry_mode": self._config.strategy.entry_mode,
             "symbol": state.symbol,
             "interval": state.interval,
             "processed_bars": state.processed_bars,
@@ -307,3 +364,20 @@ class StandalonePaperBot:
         """Expose a bounded diagnostic in the read-only status endpoint."""
 
         self._last_error = f"{type(error).__name__}: {error}"
+
+    def _record_activity(
+        self,
+        kind: str,
+        message: str,
+        detail: str,
+        candle: Candle,
+    ) -> None:
+        self._activity.append(
+            {
+                "timestamp": candle.timestamp.isoformat(),
+                "kind": kind,
+                "message": message,
+                "detail": detail,
+            }
+        )
+        self._activity = self._activity[-40:]

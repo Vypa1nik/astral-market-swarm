@@ -112,6 +112,10 @@ def test_dashboard_endpoint_exposes_live_projection_and_refresh_contract(tmp_pat
         assert payload["paper_only"] is True
         assert payload["demo_cash"] == "5000"
         assert payload["display_currency"] == "USDT"
+        assert payload["strategy_profile"] == "conservative"
+        assert payload["leverage"] == "1"
+        assert payload["borrowed_notional"] == "0"
+        assert payload["entry_mode"] == "recovery"
         assert payload["latest_candle"]["close"] == "103"
         assert len(payload["price_history"]) == 2
         assert payload["equity_history"]

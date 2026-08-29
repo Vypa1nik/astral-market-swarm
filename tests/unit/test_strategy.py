@@ -53,6 +53,23 @@ def test_strategy_signal_for_prefix_matches_same_timestamps_in_full_run() -> Non
     assert prefix == full
 
 
+def test_momentum_mode_emits_a_causal_breakout_entry() -> None:
+    data = candles(["100", "101", "102", "101"])
+    config = StrategyConfig(
+        ema_period=2,
+        rsi_period=2,
+        atr_period=2,
+        entry_mode="momentum",
+        max_hold_bars=2,
+    )
+
+    signals = generate_signals(data, config)
+
+    assert any(signal.action is Action.ENTER_LONG for signal in signals)
+    entry = next(signal for signal in signals if signal.action is Action.ENTER_LONG)
+    assert entry.reason == "EMA regime + momentum"
+
+
 def context(**overrides: object) -> RiskContext:
     values: dict[str, object] = {
         "equity": Decimal("10000"),
@@ -79,6 +96,24 @@ def test_risk_sizes_by_stop_distance_and_caps_exposure() -> None:
     assert decision.approved is True
     assert decision.quantity == Decimal("10")
     assert decision.notional == Decimal("1000")
+
+
+def test_risk_leverage_can_expand_cash_headroom_but_respects_exposure_cap() -> None:
+    decision = size_entry(
+        entry_price=Decimal("100"),
+        stop_price=Decimal("99.5"),
+        context=context(),
+        config=RiskConfig(
+            risk_per_trade=Decimal("0.01"),
+            leverage=Decimal("3"),
+            max_position_fraction=Decimal("1.5"),
+            max_gross_exposure_fraction=Decimal("1.5"),
+        ),
+    )
+
+    assert decision.approved is True
+    assert decision.notional == Decimal("15000")
+    assert decision.notional > context().cash
 
 
 @pytest.mark.parametrize(

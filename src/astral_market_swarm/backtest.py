@@ -51,6 +51,7 @@ class _OpenPosition:
     entry_timestamp: datetime
     entry_price: Decimal
     quantity: Decimal
+    borrowed_notional: Decimal
     entry_fee: Decimal
     stop_price: Decimal
     take_profit_price: Decimal
@@ -132,11 +133,15 @@ def run_backtest(
                     )
                     fill = config.fill_model.fill(entry_order, candle)
                     if fill is not None:
-                        cash -= fill.price * fill.quantity + fill.fee
+                        notional = fill.price * fill.quantity
+                        margin = notional / config.risk.leverage
+                        borrowed = notional - margin
+                        cash -= margin + fill.fee
                         position = _OpenPosition(
                             entry_timestamp=fill.timestamp,
                             entry_price=fill.price,
                             quantity=fill.quantity,
+                            borrowed_notional=borrowed,
                             entry_fee=fill.fee,
                             stop_price=signal.stop_price,
                             take_profit_price=signal.take_profit_price,
@@ -152,7 +157,7 @@ def run_backtest(
                 )
                 fill = config.fill_model.fill(exit_order, candle)
                 if fill is not None:
-                    cash += fill.price * fill.quantity - fill.fee
+                    cash += fill.price * fill.quantity - fill.fee - position.borrowed_notional
                     trades.append(
                         _trade_from_exit(
                             position,
@@ -185,7 +190,7 @@ def run_backtest(
                 )
                 fill = config.fill_model.fill(exit_order, candle, reference_price)
                 if fill is not None:
-                    cash += fill.price * fill.quantity - fill.fee
+                    cash += fill.price * fill.quantity - fill.fee - position.borrowed_notional
                     trades.append(
                         _trade_from_exit(
                             position,
@@ -208,7 +213,11 @@ def run_backtest(
             ):
                 pending_signal = current_signal
 
-        equity = cash if position is None else cash + position.quantity * candle.close
+        equity = (
+            cash
+            if position is None
+            else cash + position.quantity * candle.close - position.borrowed_notional
+        )
         equity_curve.append(equity)
         peak_equity = max(peak_equity, equity)
 

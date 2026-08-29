@@ -1,9 +1,11 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 
+import pytest
+
 from astral_market_swarm.events import Candle
 from astral_market_swarm.orders import OrderStore
-from astral_market_swarm.service import BotServiceConfig, StandalonePaperBot
+from astral_market_swarm.service import BotServiceConfig, StandalonePaperBot, profile_config
 from astral_market_swarm.strategy import StrategyConfig
 
 START = datetime(2026, 1, 1, tzinfo=UTC)
@@ -76,3 +78,19 @@ def test_paper_bot_processes_bars_with_5000_demo_account(tmp_path: object) -> No
     assert state.last_candle_timestamp == data[6].timestamp
     assert state.equity > 0
     assert state.position_quantity == Decimal("0")
+
+
+def test_paper_blast_profile_is_explicitly_leveraged_and_capped() -> None:
+    config = profile_config("paper-blast")
+
+    assert config.strategy.ema_period == 20
+    assert config.strategy.rsi_recovery == Decimal("50")
+    assert config.strategy.max_hold_bars == 12
+    assert config.risk.leverage == Decimal("3")
+    assert config.risk.max_position_fraction == Decimal("1.5")
+    assert config.risk.max_gross_exposure_fraction == Decimal("1.5")
+
+
+def test_unknown_profile_fails_closed() -> None:
+    with pytest.raises(ValueError, match="unknown strategy profile"):
+        profile_config("live-blast")

@@ -8,7 +8,8 @@ This repository does **not** import, read, start, stop, or share runtime state w
 
 ## Safety status
 
-- Spot only in v1; no leverage and no shorting.
+- Spot long-only in v1; no shorting. The default `conservative` profile uses 1x.
+- Optional `paper-blast` is a clearly labeled, isolated 3x margin simulation only; it cannot submit live orders.
 - Paper account starts with 5,000 virtual USDT; no real funds are connected.
 - Paper/testnet first; live orders are not enabled by default.
 - No hard-coded backtest metrics.
@@ -48,6 +49,10 @@ uv run python scripts/run_research.py \
 ```
 
 The report is research-only. A positive return with a small trade count is not a promotion criterion, and this command never changes the paper or live runtime configuration.
+
+## Paper profiles
+
+The runtime defaults to the conservative EMA/RSI recovery profile. For controlled paper experimentation only, set `STRATEGY_PROFILE=paper-blast`. This profile uses an EMA20 momentum entry, 1.5x gross/position caps, 1% risk per trade, a 3x simulated leverage ceiling, an 8% daily-loss guard, a 25% drawdown guard, and a 12-bar time stop. It is intentionally not a profitability claim: it can lose the virtual account quickly and must remain paper-only.
 
 ## Hostinger deployment boundary
 

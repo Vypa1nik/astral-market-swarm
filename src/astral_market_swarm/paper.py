@@ -19,7 +19,12 @@ class PaperExecutionError(ValueError):
 class PaperAccount:
     cash: Decimal
     positions: Mapping[str, Decimal]
+    borrowed: Mapping[str, Decimal]
     equity: Decimal
+
+    @property
+    def borrowed_notional(self) -> Decimal:
+        return sum(self.borrowed.values(), Decimal("0"))
 
 
 class PaperExecutor:
@@ -30,12 +35,18 @@ class PaperExecutor:
         initial_cash: Decimal,
         order_store: OrderStore,
         fill_model: FillModel | None = None,
+        leverage: Decimal = Decimal("1"),
     ) -> None:
         if initial_cash <= 0:
             raise ValueError("initial_cash must be positive")
+        if leverage < 1 or leverage > 3:
+            raise ValueError("paper leverage must be between 1 and 3")
         self._order_store = order_store
         self._fill_model = fill_model or FillModel()
-        self._cash, self._positions = order_store.load_paper_account(initial_cash)
+        self._leverage = leverage
+        self._cash, self._positions, self._borrowed = order_store.load_paper_account_state(
+            initial_cash
+        )
 
     def submit(self, order: Order, candle: Candle) -> Fill:
         """Persist intent, simulate a fill, then update paper account state."""
@@ -62,7 +73,10 @@ class PaperExecutor:
             raise PaperExecutionError("order was not fillable")
 
         if order.side is OrderSide.BUY:
-            required_cash = fill.price * fill.quantity + fill.fee
+            notional = fill.price * fill.quantity
+            margin = notional / self._leverage
+            borrowed = notional - margin
+            required_cash = margin + fill.fee
             if required_cash > self._cash:
                 self._order_store.transition(order.order_id, OrderState.REJECTED)
                 raise PaperExecutionError("cash is insufficient")
@@ -70,18 +84,23 @@ class PaperExecutor:
             self._positions[order.symbol] = (
                 self._positions.get(order.symbol, Decimal("0")) + fill.quantity
             )
+            self._borrowed[order.symbol] = self._borrowed.get(order.symbol, Decimal("0")) + borrowed
         else:
             current_quantity = self._positions.get(order.symbol, Decimal("0"))
             if fill.quantity > current_quantity:
                 self._order_store.transition(order.order_id, OrderState.REJECTED)
                 raise PaperExecutionError("asset quantity is insufficient")
-            self._cash += fill.price * fill.quantity - fill.fee
+            current_borrowed = self._borrowed.get(order.symbol, Decimal("0"))
+            borrowed_repayment = current_borrowed * fill.quantity / current_quantity
+            self._cash += fill.price * fill.quantity - fill.fee - borrowed_repayment
             remaining = current_quantity - fill.quantity
             if remaining:
                 self._positions[order.symbol] = remaining
+                self._borrowed[order.symbol] = current_borrowed - borrowed_repayment
             else:
                 self._positions.pop(order.symbol, None)
-        self._order_store.save_paper_account(self._cash, self._positions)
+                self._borrowed.pop(order.symbol, None)
+        self._order_store.save_paper_account(self._cash, self._positions, self._borrowed)
 
         self._order_store.transition(order.order_id, OrderState.ACKNOWLEDGED)
         final_state = (
@@ -98,4 +117,10 @@ class PaperExecutor:
         """Mark this isolated paper account at the provided candle close."""
 
         marked_value = self._positions.get(candle.symbol, Decimal("0")) * candle.close
-        return PaperAccount(self._cash, dict(self._positions), self._cash + marked_value)
+        borrowed = dict(self._borrowed)
+        return PaperAccount(
+            self._cash,
+            dict(self._positions),
+            borrowed,
+            self._cash + marked_value - sum(borrowed.values(), Decimal("0")),
+        )

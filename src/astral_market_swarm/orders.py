@@ -204,6 +204,13 @@ class OrderStore:
         self,
         initial_cash: Decimal,
     ) -> tuple[Decimal, dict[str, Decimal]]:
+        cash, positions, _borrowed = self.load_paper_account_state(initial_cash)
+        return cash, positions
+
+    def load_paper_account_state(
+        self,
+        initial_cash: Decimal,
+    ) -> tuple[Decimal, dict[str, Decimal], dict[str, Decimal]]:
         cash_row = self._connection.execute(
             "SELECT state_value FROM paper_account_state WHERE state_key = 'cash'"
         ).fetchone()
@@ -217,9 +224,23 @@ class OrderStore:
             for row in rows
             if Decimal(row[1]) != 0
         }
-        return cash, positions
+        borrowed_rows = self._connection.execute(
+            "SELECT state_key, state_value FROM paper_account_state "
+            "WHERE state_key LIKE 'borrowed:%'"
+        ).fetchall()
+        borrowed = {
+            row[0].removeprefix("borrowed:"): Decimal(row[1])
+            for row in borrowed_rows
+            if Decimal(row[1]) != 0
+        }
+        return cash, positions, borrowed
 
-    def save_paper_account(self, cash: Decimal, positions: dict[str, Decimal]) -> None:
+    def save_paper_account(
+        self,
+        cash: Decimal,
+        positions: dict[str, Decimal],
+        borrowed: dict[str, Decimal] | None = None,
+    ) -> None:
         self._connection.execute(
             "INSERT INTO paper_account_state(state_key, state_value) VALUES('cash', ?) "
             "ON CONFLICT(state_key) DO UPDATE SET state_value = excluded.state_value",
@@ -232,6 +253,14 @@ class OrderStore:
             "INSERT INTO paper_account_state(state_key, state_value) VALUES(?, ?)",
             [(f"position:{symbol}", str(quantity)) for symbol, quantity in positions.items()],
         )
+        if borrowed is not None:
+            self._connection.execute(
+                "DELETE FROM paper_account_state WHERE state_key LIKE 'borrowed:%'"
+            )
+            self._connection.executemany(
+                "INSERT INTO paper_account_state(state_key, state_value) VALUES(?, ?)",
+                [(f"borrowed:{symbol}", str(value)) for symbol, value in borrowed.items()],
+            )
         self._connection.commit()
 
     def close(self) -> None:

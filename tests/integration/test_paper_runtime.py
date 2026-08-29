@@ -68,3 +68,29 @@ def test_paper_account_persists_across_executor_restart(tmp_path: object) -> Non
     account = second_executor.account(bar(NOW))
     assert account.positions["BTC/USDT"] == Decimal("1")
     assert account.cash < Decimal("5000")
+
+
+def test_paper_executor_supports_bounded_leveraged_margin_and_repayment(
+    tmp_path: object,
+) -> None:
+    database = str(tmp_path / "leveraged.sqlite3")
+    store = OrderStore(database)
+    executor = PaperExecutor(Decimal("5000"), store, leverage=Decimal("3"))
+    entry_bar = bar(NOW, "100")
+    entry = Order("leveraged-buy", "BTC/USDT", OrderSide.BUY, OrderType.MARKET, Decimal("5"))
+
+    executor.submit(entry, entry_bar)
+    leveraged = executor.account(entry_bar)
+
+    assert leveraged.borrowed_notional > 0
+    assert leveraged.cash > Decimal("4500")
+    assert leveraged.equity > Decimal("5000")
+    assert leveraged.equity < Decimal("5050")
+
+    exit_bar = bar(NOW + timedelta(minutes=5), "102")
+    exit_order = Order("leveraged-sell", "BTC/USDT", OrderSide.SELL, OrderType.MARKET, Decimal("5"))
+    executor.submit(exit_order, exit_bar)
+    flat = executor.account(exit_bar)
+
+    assert flat.positions.get("BTC/USDT", Decimal("0")) == Decimal("0")
+    assert flat.borrowed_notional == Decimal("0")

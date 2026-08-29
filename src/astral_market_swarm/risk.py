@@ -19,17 +19,16 @@ class RiskConfig:
     max_daily_loss: Decimal = Decimal("0.03")
     max_drawdown: Decimal = Decimal("0.15")
     max_signal_age: timedelta = timedelta(minutes=15)
+    leverage: Decimal = Decimal("1")
 
     def __post_init__(self) -> None:
-        fractions = (
-            self.risk_per_trade,
-            self.max_position_fraction,
-            self.max_gross_exposure_fraction,
-            self.max_daily_loss,
-            self.max_drawdown,
-        )
+        fractions = (self.risk_per_trade, self.max_daily_loss, self.max_drawdown)
         if any(value <= 0 or value > 1 for value in fractions):
             raise ValueError("risk fractions must be in the interval (0, 1]")
+        if self.max_position_fraction <= 0 or self.max_gross_exposure_fraction <= 0:
+            raise ValueError("exposure fractions must be positive")
+        if self.leverage < 1 or self.leverage > 3:
+            raise ValueError("paper leverage must be between 1 and 3")
         if self.max_signal_age <= timedelta(0):
             raise ValueError("max_signal_age must be positive")
 
@@ -95,7 +94,7 @@ def size_entry(
     if gross_headroom <= 0:
         _reject("gross exposure limit reached")
     quantity_by_exposure = gross_headroom / entry_price
-    quantity_by_cash = context.cash / entry_price
+    quantity_by_cash = context.cash * config.leverage / entry_price
     quantity = min(quantity_by_risk, quantity_by_position, quantity_by_exposure, quantity_by_cash)
     if quantity <= 0:
         _reject("cash or exposure is insufficient")

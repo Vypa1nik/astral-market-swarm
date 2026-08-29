@@ -26,6 +26,7 @@ class StrategyConfig:
     atr_stop_multiple: Decimal = Decimal("2")
     take_profit_multiple: Decimal = Decimal("2")
     max_hold_bars: int = 0
+    entry_mode: str = "recovery"
 
     def __post_init__(self) -> None:
         if min(self.ema_period, self.rsi_period, self.atr_period) < 1:
@@ -36,6 +37,8 @@ class StrategyConfig:
             raise ValueError("ATR multiples must be positive")
         if self.max_hold_bars < 0:
             raise ValueError("max_hold_bars must be non-negative")
+        if self.entry_mode not in {"recovery", "momentum"}:
+            raise ValueError("entry_mode must be recovery or momentum")
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,10 +205,17 @@ def generate_signals(
             and previous_rsi <= config.rsi_recovery
             and current_rsi > config.rsi_recovery
         )
+        momentum = (
+            index > 0
+            and current_ema is not None
+            and candle.close > current_ema
+            and candle.close > candles[index - 1].close
+        )
+        entry_ready = recovery if config.entry_mode == "recovery" else momentum
         if (
             current_ema is not None
             and current_atr is not None
-            and recovery
+            and entry_ready
             and candle.close > current_ema
         ):
             stop_price = candle.close - current_atr * config.atr_stop_multiple
@@ -218,7 +228,11 @@ def generate_signals(
                         candle.timestamp,
                         Action.ENTER_LONG,
                         candle.close,
-                        "EMA regime + RSI recovery",
+                        (
+                            "EMA regime + RSI recovery"
+                            if config.entry_mode == "recovery"
+                            else "EMA regime + momentum"
+                        ),
                         stop_price,
                         take_profit_price,
                     )
