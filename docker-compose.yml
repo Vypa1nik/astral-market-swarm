@@ -1,52 +1,50 @@
-version: '3.8'
+name: astral-market-swarm
 
 services:
-  astral-market-swarm:
-    build: .
-    container_name: astral-market-swarm
+  quantbot:
+    build:
+      context: .
+    container_name: quantbot-standalone
     restart: unless-stopped
-    ports:
-      - "8080:8080"
+    init: true
+    env_file:
+      - .env
     environment:
-      # Trading configuration
-      SYMBOL: ${SYMBOL:-BTC/USDT}
-      INTERVAL: ${INTERVAL:-5m}
-      DEMO_CASH: ${DEMO_CASH:-10000}
-      DISPLAY_CURRENCY: ${DISPLAY_CURRENCY:-USDT}
-      
-      # Strategy parameters
-      LOOKBACK: ${LOOKBACK:-250}
-      POLL_SECONDS: ${POLL_SECONDS:-300}
-      
-      # Storage
+      PORT: "8080"
       STATE_DB: /app/state/orders.sqlite3
-      
-      # API endpoint
-      BINANCE_PUBLIC_BASE_URL: ${BINANCE_PUBLIC_BASE_URL:-https://api.binance.com/api/v3}
-      
+      DEMO_CASH: "10000"
+      DISPLAY_CURRENCY: USDT
+      SYMBOL: BTC/USDT
+      INTERVAL: ${INTERVAL:-4h}
+      LOOKBACK: ${LOOKBACK:-400}
+      POLL_SECONDS: ${POLL_SECONDS:-60}
+      STRATEGY_PROFILE: ${STRATEGY_PROFILE:-trend-regime}
+    ports:
+      - "127.0.0.1:8089:8080"
     volumes:
-      # Persist order state across container restarts
-      - ./state:/app/state
-      
-      # Persist research reports
-      - ./reports:/app/reports
-      
-      # Persist logs
-      - ./logs:/app/logs
-    
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    
-    # Resource limits (adjust based on your system)
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 512M
-        reservations:
-          cpus: '0.5'
-          memory: 256M
+      - quantbot_state:/app/state
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+      - traefik.http.routers.quantbot.rule=Host(`quantbot.sokezzz.com`)
+      - traefik.http.routers.quantbot.entrypoints=websecure
+      - traefik.http.routers.quantbot.tls.certresolver=letsencrypt
+      - traefik.http.services.quantbot.loadbalancer.server.port=8080
+    networks:
+      - default
+      - traefik
+
+volumes:
+  quantbot_state:
+    name: quantbot_standalone_state
+
+networks:
+  traefik:
+    external: true

@@ -17,6 +17,9 @@ class Action(Enum):
     EXIT_LONG = "exit_long"
 
 
+ENTRY_MODES = frozenset({"recovery", "momentum", "trend_stack"})
+
+
 @dataclass(frozen=True, slots=True)
 class StrategyConfig:
     ema_period: int = 200
@@ -27,18 +30,32 @@ class StrategyConfig:
     take_profit_multiple: Decimal = Decimal("2")
     max_hold_bars: int = 0
     entry_mode: str = "recovery"
+    ema_fast_period: int = 20
+    ema_mid_period: int = 50
+    trail_atr_multiple: Decimal = Decimal("0")
+    breakeven_at_r: Decimal = Decimal("0")
 
     def __post_init__(self) -> None:
         if min(self.ema_period, self.rsi_period, self.atr_period) < 1:
             raise ValueError("indicator periods must be positive")
+        if min(self.ema_fast_period, self.ema_mid_period) < 1:
+            raise ValueError("indicator periods must be positive")
         if not 0 < self.rsi_recovery < 100:
             raise ValueError("rsi_recovery must be between 0 and 100")
-        if self.atr_stop_multiple <= 0 or self.take_profit_multiple <= 0:
+        if self.atr_stop_multiple <= 0:
             raise ValueError("ATR multiples must be positive")
+        if self.take_profit_multiple < 0:
+            raise ValueError("take_profit_multiple must be non-negative")
+        if self.trail_atr_multiple < 0 or self.breakeven_at_r < 0:
+            raise ValueError("trail and breakeven multiples must be non-negative")
         if self.max_hold_bars < 0:
             raise ValueError("max_hold_bars must be non-negative")
-        if self.entry_mode not in {"recovery", "momentum"}:
-            raise ValueError("entry_mode must be recovery or momentum")
+        if self.entry_mode not in ENTRY_MODES:
+            raise ValueError(f"entry_mode must be one of {sorted(ENTRY_MODES)}")
+        if self.entry_mode == "trend_stack" and not (
+            self.ema_fast_period < self.ema_mid_period < self.ema_period
+        ):
+            raise ValueError("trend_stack requires ema_fast < ema_mid < ema_period")
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,6 +151,14 @@ def _atr(candles: Sequence[Candle], period: int) -> tuple[Decimal | None, ...]:
     return tuple(result)
 
 
+def _entry_reason(entry_mode: str) -> str:
+    if entry_mode == "recovery":
+        return "EMA regime + RSI recovery"
+    if entry_mode == "momentum":
+        return "EMA regime + momentum"
+    return "EMA stack trend regime"
+
+
 def generate_signals(
     candles: Sequence[Candle],
     config: StrategyConfig,
@@ -144,6 +169,8 @@ def generate_signals(
         return ()
     closes = tuple(candle.close for candle in candles)
     ema = _ema(closes, config.ema_period)
+    ema_fast = _ema(closes, config.ema_fast_period)
+    ema_mid = _ema(closes, config.ema_mid_period)
     rsi = _rsi(closes, config.rsi_period)
     atr = _atr(candles, config.atr_period)
     signals: list[StrategySignal] = []
@@ -151,11 +178,25 @@ def generate_signals(
     stop_price: Decimal | None = None
     take_profit_price: Decimal | None = None
     entry_index = 0
+    entry_price = Decimal("0")
+    risk_unit = Decimal("0")
+    trail_distance = Decimal("0")
+    run_high = Decimal("0")
 
     for index, candle in enumerate(candles):
         if in_position:
             assert stop_price is not None
-            assert take_profit_price is not None
+            # Trailing stop and breakeven ratchet: both only ever raise the stop.
+            if candle.high > run_high:
+                run_high = candle.high
+            if trail_distance > 0:
+                trailed = run_high - trail_distance
+                if trailed > stop_price:
+                    stop_price = trailed
+            if config.breakeven_at_r > 0 and risk_unit > 0:
+                trigger = entry_price + risk_unit * config.breakeven_at_r
+                if run_high >= trigger and entry_price > stop_price:
+                    stop_price = entry_price
             if candle.low <= stop_price:
                 signals.append(
                     StrategySignal(
@@ -169,7 +210,7 @@ def generate_signals(
                 stop_price = None
                 take_profit_price = None
                 continue
-            if candle.high >= take_profit_price:
+            if take_profit_price is not None and candle.high >= take_profit_price:
                 signals.append(
                     StrategySignal(
                         candle.timestamp,
@@ -211,7 +252,21 @@ def generate_signals(
             and candle.close > current_ema
             and candle.close > candles[index - 1].close
         )
-        entry_ready = recovery if config.entry_mode == "recovery" else momentum
+        trend_stack = (
+            index > 0
+            and current_ema is not None
+            and ema_fast[index] is not None
+            and ema_mid[index] is not None
+            and candle.close > current_ema
+            and ema_fast[index] > ema_mid[index] > current_ema  # type: ignore[operator]
+            and candle.close > candles[index - 1].close
+        )
+        if config.entry_mode == "recovery":
+            entry_ready = recovery
+        elif config.entry_mode == "momentum":
+            entry_ready = momentum
+        else:
+            entry_ready = trend_stack
         if (
             current_ema is not None
             and current_atr is not None
@@ -219,20 +274,24 @@ def generate_signals(
             and candle.close > current_ema
         ):
             stop_price = candle.close - current_atr * config.atr_stop_multiple
-            take_profit_price = candle.close + current_atr * config.take_profit_multiple
+            take_profit_price = (
+                candle.close + current_atr * config.take_profit_multiple
+                if config.take_profit_multiple > 0
+                else None
+            )
             if stop_price > 0:
                 in_position = True
                 entry_index = index
+                entry_price = candle.close
+                risk_unit = current_atr * config.atr_stop_multiple
+                trail_distance = current_atr * config.trail_atr_multiple
+                run_high = candle.high
                 signals.append(
                     StrategySignal(
                         candle.timestamp,
                         Action.ENTER_LONG,
                         candle.close,
-                        (
-                            "EMA regime + RSI recovery"
-                            if config.entry_mode == "recovery"
-                            else "EMA regime + momentum"
-                        ),
+                        _entry_reason(config.entry_mode),
                         stop_price,
                         take_profit_price,
                     )
@@ -276,19 +335,29 @@ def generate_latest_signal(
         and current_rsi > config.rsi_recovery
     )
     momentum = candles[-1].close > candles[-2].close
-    entry_ready = recovery if config.entry_mode == "recovery" else momentum
+    if config.entry_mode == "recovery":
+        entry_ready = recovery
+    elif config.entry_mode == "momentum":
+        entry_ready = momentum
+    else:
+        fast = _ema(closes, config.ema_fast_period)[-1]
+        mid = _ema(closes, config.ema_mid_period)[-1]
+        entry_ready = fast is not None and mid is not None and fast > mid > ema and momentum
     if not entry_ready:
         return StrategySignal(candles[-1].timestamp, Action.HOLD, candles[-1].close, "no setup")
     stop = candles[-1].close - atr * config.atr_stop_multiple
-    take_profit = candles[-1].close + atr * config.take_profit_multiple
+    take_profit = (
+        candles[-1].close + atr * config.take_profit_multiple
+        if config.take_profit_multiple > 0
+        else None
+    )
     if stop <= 0:
         return StrategySignal(candles[-1].timestamp, Action.HOLD, candles[-1].close, "invalid stop")
-    mode_name = "RSI recovery" if config.entry_mode == "recovery" else "momentum"
     return StrategySignal(
         candles[-1].timestamp,
         Action.ENTER_LONG,
         candles[-1].close,
-        f"EMA regime + {mode_name}",
+        _entry_reason(config.entry_mode),
         stop,
         take_profit,
     )

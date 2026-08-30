@@ -93,6 +93,14 @@ The report is research-only. A positive return with a small trade count is not a
 
 The runtime defaults to the conservative EMA/RSI recovery profile. For controlled paper experimentation only, set `STRATEGY_PROFILE=paper-blast`. This profile uses an EMA20 momentum entry, 1.5x gross/position caps, 1% risk per trade, a 3x simulated leverage ceiling, an 8% daily-loss guard, a 25% drawdown guard, and a 12-bar time stop. It is intentionally not a profitability claim: it can lose the virtual account quickly and must remain paper-only.
 
+### trend-regime (validated, recommended)
+
+`STRATEGY_PROFILE=trend-regime` runs an EMA-stack trend-following entry on **4h** bars with a trailing ATR exit and no take-profit. It replaces `paper-blast`, which lost 25.2% on 105 days of real 5m data because a 0.32% round-trip cost exceeded its 2x ATR target — on 5m bars that cost equals 2.64x ATR, making any target mathematically unprofitable.
+
+On 19,784 real 4h BTC/USDT bars (9 years) it returns +672.8% (CAGR 25.4%, PF 1.54, max drawdown 23.4%, 172 trades), is profitable in 5 of 5 walk-forward folds, and returns +21.1% on an untouched holdout. It does **not** beat buy-and-hold (+1,697% over the same period); it targets a much lower drawdown and stays positive through bear markets.
+
+This profile requires `INTERVAL=4h` and `LOOKBACK=400` (EMA200 warmup). See [docs/STRATEGY_TREND_REGIME.md](docs/STRATEGY_TREND_REGIME.md) for the full derivation, evidence, and limitations. Backtest results are not a promise of live results.
+
 ## Hostinger deployment boundary
 
 The intended public hostname is `quantbot.sokezzz.com`. Deployment must be performed as a new Compose project and volume after a read-only inventory of the Hostinger host:
