@@ -21,7 +21,8 @@ COPY scripts ./scripts
 RUN mkdir -p /app/state /app/reports /app/logs
 
 # Environment defaults (override at runtime)
-ENV DEMO_CASH=5000 \
+ENV PATH="/app/.venv/bin:$PATH" \
+    DEMO_CASH=5000 \
     DISPLAY_CURRENCY=USDT \
     SYMBOL=BTC/USDT \
     INTERVAL=5m \
@@ -40,4 +41,4 @@ HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" || exit 1
 
 # Run the paper trading runtime
-CMD ["uv", "run", "python", "-m", "astral_market_swarm.app"]
+CMD ["python", "-m", "astral_market_swarm.app"]
