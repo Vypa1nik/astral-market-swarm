@@ -17,7 +17,7 @@ class Action(Enum):
     EXIT_LONG = "exit_long"
 
 
-ENTRY_MODES = frozenset({"recovery", "momentum", "trend_stack"})
+ENTRY_MODES = frozenset({"recovery", "momentum", "trend_stack", "vcat"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,12 +34,18 @@ class StrategyConfig:
     ema_mid_period: int = 50
     trail_atr_multiple: Decimal = Decimal("0")
     breakeven_at_r: Decimal = Decimal("0")
+    donchian_period: int = 20
+    volume_period: int = 20
+    volume_multiplier: Decimal = Decimal("1.2")
+    max_extension_atr: Decimal = Decimal("1.5")
 
     def __post_init__(self) -> None:
         if min(self.ema_period, self.rsi_period, self.atr_period) < 1:
             raise ValueError("indicator periods must be positive")
         if min(self.ema_fast_period, self.ema_mid_period) < 1:
             raise ValueError("indicator periods must be positive")
+        if min(self.donchian_period, self.volume_period) < 2:
+            raise ValueError("channel and volume periods must be at least 2")
         if not 0 < self.rsi_recovery < 100:
             raise ValueError("rsi_recovery must be between 0 and 100")
         if self.atr_stop_multiple <= 0:
@@ -48,11 +54,13 @@ class StrategyConfig:
             raise ValueError("take_profit_multiple must be non-negative")
         if self.trail_atr_multiple < 0 or self.breakeven_at_r < 0:
             raise ValueError("trail and breakeven multiples must be non-negative")
+        if self.volume_multiplier <= 0 or self.max_extension_atr <= 0:
+            raise ValueError("volume and extension multiples must be positive")
         if self.max_hold_bars < 0:
             raise ValueError("max_hold_bars must be non-negative")
         if self.entry_mode not in ENTRY_MODES:
             raise ValueError(f"entry_mode must be one of {sorted(ENTRY_MODES)}")
-        if self.entry_mode == "trend_stack" and not (
+        if self.entry_mode in {"trend_stack", "vcat"} and not (
             self.ema_fast_period < self.ema_mid_period < self.ema_period
         ):
             raise ValueError("trend_stack requires ema_fast < ema_mid < ema_period")
@@ -156,7 +164,23 @@ def _entry_reason(entry_mode: str) -> str:
         return "EMA regime + RSI recovery"
     if entry_mode == "momentum":
         return "EMA regime + momentum"
+    if entry_mode == "vcat":
+        return "VCAT volume-confirmed channel breakout"
     return "EMA stack trend regime"
+
+
+def _prior_high(values: Sequence[Decimal], period: int) -> tuple[Decimal | None, ...]:
+    result: list[Decimal | None] = [None] * len(values)
+    for index in range(period, len(values)):
+        result[index] = max(values[index - period : index])
+    return tuple(result)
+
+
+def _prior_average(values: Sequence[Decimal], period: int) -> tuple[Decimal | None, ...]:
+    result: list[Decimal | None] = [None] * len(values)
+    for index in range(period, len(values)):
+        result[index] = sum(values[index - period : index], Decimal("0")) / period
+    return tuple(result)
 
 
 def generate_signals(
@@ -173,6 +197,10 @@ def generate_signals(
     ema_mid = _ema(closes, config.ema_mid_period)
     rsi = _rsi(closes, config.rsi_period)
     atr = _atr(candles, config.atr_period)
+    channel_high = _prior_high(closes, config.donchian_period)
+    average_volume = _prior_average(
+        tuple(candle.volume for candle in candles), config.volume_period
+    )
     signals: list[StrategySignal] = []
     in_position = False
     stop_price: Decimal | None = None
@@ -261,12 +289,27 @@ def generate_signals(
             and ema_fast[index] > ema_mid[index] > current_ema  # type: ignore[operator]
             and candle.close > candles[index - 1].close
         )
+        channel = channel_high[index]
+        avg_volume = average_volume[index]
+        fast = ema_fast[index]
+        mid = ema_mid[index]
+        vcat = (
+            index > 0 and current_ema is not None and current_atr is not None
+            and fast is not None and mid is not None
+            and channel is not None and avg_volume is not None
+            and candle.close > current_ema and fast > mid > current_ema
+            and candle.close > channel
+            and candle.volume >= avg_volume * config.volume_multiplier
+            and candle.close - channel <= current_atr * config.max_extension_atr
+        )
         if config.entry_mode == "recovery":
             entry_ready = recovery
         elif config.entry_mode == "momentum":
             entry_ready = momentum
-        else:
+        elif config.entry_mode == "trend_stack":
             entry_ready = trend_stack
+        else:
+            entry_ready = vcat
         if (
             current_ema is not None
             and current_atr is not None
@@ -339,10 +382,23 @@ def generate_latest_signal(
         entry_ready = recovery
     elif config.entry_mode == "momentum":
         entry_ready = momentum
-    else:
+    elif config.entry_mode == "trend_stack":
         fast = _ema(closes, config.ema_fast_period)[-1]
         mid = _ema(closes, config.ema_mid_period)[-1]
         entry_ready = fast is not None and mid is not None and fast > mid > ema and momentum
+    else:
+        fast = _ema(closes, config.ema_fast_period)[-1]
+        mid = _ema(closes, config.ema_mid_period)[-1]
+        channel = _prior_high(closes, config.donchian_period)[-1]
+        avg_volume = _prior_average(
+            tuple(candle.volume for candle in candles), config.volume_period
+        )[-1]
+        entry_ready = (
+            fast is not None and mid is not None and channel is not None and avg_volume is not None
+            and fast > mid > ema and candles[-1].close > channel
+            and candles[-1].volume >= avg_volume * config.volume_multiplier
+            and candles[-1].close - channel <= atr * config.max_extension_atr
+        )
     if not entry_ready:
         return StrategySignal(candles[-1].timestamp, Action.HOLD, candles[-1].close, "no setup")
     stop = candles[-1].close - atr * config.atr_stop_multiple

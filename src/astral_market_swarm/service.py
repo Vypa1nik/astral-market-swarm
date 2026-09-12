@@ -110,6 +110,36 @@ def profile_config(profile: str) -> BotServiceConfig:
                 leverage=Decimal("3"),
             ),
         )
+    if normalized == "vcat-paper":
+        return BotServiceConfig(
+            strategy_profile=normalized,
+            interval="4h",
+            strategy=StrategyConfig(
+                ema_period=200,
+                ema_fast_period=20,
+                ema_mid_period=50,
+                atr_period=14,
+                atr_stop_multiple=Decimal("2.5"),
+                take_profit_multiple=Decimal("0"),
+                trail_atr_multiple=Decimal("4"),
+                breakeven_at_r=Decimal("1"),
+                max_hold_bars=120,
+                entry_mode="vcat",
+                donchian_period=20,
+                volume_period=20,
+                volume_multiplier=Decimal("1.2"),
+                max_extension_atr=Decimal("1.5"),
+            ),
+            risk=RiskConfig(
+                risk_per_trade=Decimal("0.015"),
+                max_position_fraction=Decimal("1.5"),
+                max_gross_exposure_fraction=Decimal("1.5"),
+                max_daily_loss=Decimal("0.05"),
+                max_drawdown=Decimal("0.15"),
+                max_signal_age=timedelta(hours=5),
+                leverage=Decimal("2"),
+            ),
+        )
     raise ValueError(f"unknown strategy profile: {profile}")
 
 
