@@ -36,9 +36,9 @@ ENV PATH="/app/.venv/bin:$PATH" \
 # Expose HTTP API port
 EXPOSE 8080
 
-# Health check (ping /health endpoint)
+# Health check (ping /api/health endpoint)
 HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')" || exit 1
 
 # Run the paper trading runtime
 CMD ["python", "-m", "astral_market_swarm.app"]
