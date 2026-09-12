@@ -91,6 +91,19 @@ def test_paper_blast_profile_is_explicitly_leveraged_and_capped() -> None:
     assert config.risk.max_gross_exposure_fraction == Decimal("1.5")
 
 
+def test_vcat_profile_uses_volume_confirmed_breakout_and_bounded_risk() -> None:
+    config = profile_config("vcat-paper")
+
+    assert config.interval == "4h"
+    assert config.strategy.entry_mode == "vcat"
+    assert config.strategy.donchian_period == 20
+    assert config.strategy.volume_multiplier == Decimal("1.2")
+    assert config.strategy.max_extension_atr == Decimal("1.5")
+    assert config.risk.risk_per_trade == Decimal("0.015")
+    assert config.risk.leverage == Decimal("2")
+    assert config.risk.max_drawdown == Decimal("0.15")
+
+
 def test_unknown_profile_fails_closed() -> None:
     with pytest.raises(ValueError, match="unknown strategy profile"):
         profile_config("live-blast")
