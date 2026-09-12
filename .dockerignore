@@ -38,6 +38,7 @@ logs/
 # Docs
 docs/
 *.md
+!README.md
 LICENSE
 
 # Config files
