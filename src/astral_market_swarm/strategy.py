@@ -17,7 +17,9 @@ class Action(Enum):
     EXIT_LONG = "exit_long"
 
 
-ENTRY_MODES = frozenset({"recovery", "momentum", "trend_stack", "vcat"})
+ENTRY_MODES = frozenset(
+    {"recovery", "momentum", "trend_stack", "vcat", "adaptive_regime"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,6 +168,8 @@ def _entry_reason(entry_mode: str) -> str:
         return "EMA regime + momentum"
     if entry_mode == "vcat":
         return "VCAT volume-confirmed channel breakout"
+    if entry_mode == "adaptive_regime":
+        return "adaptive bull-regime trend entry"
     return "EMA stack trend regime"
 
 
@@ -225,6 +229,30 @@ def generate_signals(
                 trigger = entry_price + risk_unit * config.breakeven_at_r
                 if run_high >= trigger and entry_price > stop_price:
                     stop_price = entry_price
+            if config.entry_mode == "adaptive_regime":
+                current_ema = ema[index]
+                current_fast = ema_fast[index]
+                current_mid = ema_mid[index]
+                bear_regime = (
+                    current_ema is not None
+                    and current_fast is not None
+                    and current_mid is not None
+                    and candle.close < current_ema
+                    and current_fast < current_mid
+                )
+                if bear_regime:
+                    signals.append(
+                        StrategySignal(
+                            candle.timestamp,
+                            Action.EXIT_LONG,
+                            candle.close,
+                            "adaptive bear-regime exit to cash",
+                        )
+                    )
+                    in_position = False
+                    stop_price = None
+                    take_profit_price = None
+                    continue
             if candle.low <= stop_price:
                 signals.append(
                     StrategySignal(
@@ -306,7 +334,7 @@ def generate_signals(
             entry_ready = recovery
         elif config.entry_mode == "momentum":
             entry_ready = momentum
-        elif config.entry_mode == "trend_stack":
+        elif config.entry_mode in {"trend_stack", "adaptive_regime"}:
             entry_ready = trend_stack
         else:
             entry_ready = vcat
@@ -382,7 +410,7 @@ def generate_latest_signal(
         entry_ready = recovery
     elif config.entry_mode == "momentum":
         entry_ready = momentum
-    elif config.entry_mode == "trend_stack":
+    elif config.entry_mode in {"trend_stack", "adaptive_regime"}:
         fast = _ema(closes, config.ema_fast_period)[-1]
         mid = _ema(closes, config.ema_mid_period)[-1]
         entry_ready = fast is not None and mid is not None and fast > mid > ema and momentum

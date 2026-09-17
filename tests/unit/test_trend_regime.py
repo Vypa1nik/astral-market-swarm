@@ -135,6 +135,30 @@ def test_trend_regime_profile_is_validated_on_four_hour_bars() -> None:
     assert profile.risk.max_signal_age == timedelta(hours=5)
 
 
+def test_adaptive_regime_exits_an_open_long_when_bear_regime_is_confirmed() -> None:
+    config = trend_config(entry_mode="adaptive_regime")
+    rising = [str(100 + index * 2) for index in range(25)]
+    falling = [str(146 - index * 6) for index in range(16)]
+    closes = rising + falling
+
+    signals = generate_signals(candles(closes), config)
+
+    assert any(
+        signal.action is Action.EXIT_LONG and signal.reason == "adaptive bear-regime exit to cash"
+        for signal in signals
+    )
+
+
+def test_adaptive_regime_profile_uses_bounded_long_or_cash_risk() -> None:
+    profile = profile_config("adaptive-regime-paper")
+
+    assert profile.interval == "4h"
+    assert profile.strategy.entry_mode == "adaptive_regime"
+    assert profile.risk.risk_per_trade == Decimal("0.01")
+    assert profile.risk.leverage == Decimal("2")
+    assert profile.risk.max_drawdown == Decimal("0.15")
+
+
 def test_existing_profiles_still_load() -> None:
     assert profile_config("paper-blast").strategy.entry_mode == "momentum"
     assert profile_config("conservative").strategy.entry_mode == "recovery"

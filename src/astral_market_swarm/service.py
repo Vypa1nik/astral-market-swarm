@@ -140,6 +140,33 @@ def profile_config(profile: str) -> BotServiceConfig:
                 leverage=Decimal("2"),
             ),
         )
+    if normalized == "adaptive-regime-paper":
+        return BotServiceConfig(
+            strategy_profile=normalized,
+            interval="4h",
+            strategy=StrategyConfig(
+                ema_period=200,
+                ema_fast_period=20,
+                ema_mid_period=50,
+                rsi_period=14,
+                atr_period=14,
+                atr_stop_multiple=Decimal("2.5"),
+                take_profit_multiple=Decimal("0"),
+                trail_atr_multiple=Decimal("6"),
+                breakeven_at_r=Decimal("1"),
+                max_hold_bars=72,
+                entry_mode="adaptive_regime",
+            ),
+            risk=RiskConfig(
+                risk_per_trade=Decimal("0.01"),
+                max_position_fraction=Decimal("1"),
+                max_gross_exposure_fraction=Decimal("1"),
+                max_daily_loss=Decimal("0.05"),
+                max_drawdown=Decimal("0.15"),
+                max_signal_age=timedelta(hours=5),
+                leverage=Decimal("2"),
+            ),
+        )
     raise ValueError(f"unknown strategy profile: {profile}")
 
 
