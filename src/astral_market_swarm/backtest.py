@@ -54,7 +54,7 @@ class _OpenPosition:
     borrowed_notional: Decimal
     entry_fee: Decimal
     stop_price: Decimal
-    take_profit_price: Decimal
+    take_profit_price: Decimal | None
 
 
 def _trade_from_exit(
@@ -108,8 +108,8 @@ def run_backtest(
         if index >= execution_start and pending_signal is not None:
             signal = pending_signal
             if signal.action is Action.ENTER_LONG and position is None:
-                if signal.stop_price is None or signal.take_profit_price is None:
-                    raise ValueError("entry signal must include stop and take-profit")
+                if signal.stop_price is None:
+                    raise ValueError("entry signal is missing stop price")
                 context = RiskContext(
                     equity=cash,
                     cash=cash,
@@ -177,7 +177,10 @@ def run_backtest(
             if candle.low <= position.stop_price:
                 protective_reason = "protective stop"
                 reference_price = min(position.stop_price, candle.open)
-            elif candle.high >= position.take_profit_price:
+            elif (
+                position.take_profit_price is not None
+                and candle.high >= position.take_profit_price
+            ):
                 protective_reason = "take profit"
                 reference_price = max(position.take_profit_price, candle.open)
             if protective_reason is not None and reference_price is not None:

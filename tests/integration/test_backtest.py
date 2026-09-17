@@ -65,3 +65,25 @@ def test_backtest_oos_execution_starts_flat_at_boundary() -> None:
 
     assert all(value == Decimal("5000") for value in result.equity_curve[:4])
     assert all(trade.entry_timestamp >= data[4].timestamp for trade in result.trades)
+
+
+def test_backtest_allows_trend_strategy_without_fixed_take_profit() -> None:
+    result = run_backtest(
+        make_candles(["100", "101", "102", "103", "104", "100", "98"]),
+        BacktestConfig(
+            interval_minutes=5,
+            initial_cash=Decimal("5000"),
+            strategy=StrategyConfig(
+                ema_period=3,
+                ema_fast_period=1,
+                ema_mid_period=2,
+                rsi_period=2,
+                atr_period=2,
+                atr_stop_multiple=Decimal("1"),
+                take_profit_multiple=Decimal("0"),
+                entry_mode="trend_stack",
+            ),
+        ),
+    )
+
+    assert result.metrics.trade_count >= 1
