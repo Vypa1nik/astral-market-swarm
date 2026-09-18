@@ -111,13 +111,25 @@ class BinanceFuturesPublicData:
         return snapshot
 
     def fetch_funding_history(
-        self, symbol: str, limit: int = 100, now: datetime | None = None
+        self,
+        symbol: str,
+        limit: int = 100,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        now: datetime | None = None,
     ) -> tuple[FundingSettlement, ...]:
         api_symbol = self._validate_symbol(symbol)
         if not 1 <= limit <= 1000:
             raise FuturesPublicDataError("limit must be between 1 and 1000")
         current_time = self._validate_now(now)
-        payload = self._fetch_json("fundingRate", {"symbol": api_symbol, "limit": limit})
+        query: dict[str, str | int] = {"symbol": api_symbol, "limit": limit}
+        if start_time is not None:
+            query["startTime"] = self._validated_milliseconds(start_time)
+        if end_time is not None:
+            query["endTime"] = self._validated_milliseconds(end_time)
+        if start_time is not None and end_time is not None and start_time > end_time:
+            raise FuturesPublicDataError("funding time range is invalid")
+        payload = self._fetch_json("fundingRate", query)
         if not isinstance(payload, list):
             raise FuturesPublicDataError("Binance Futures funding history is malformed")
         deduplicated: dict[datetime, FundingSettlement] = {}
@@ -167,6 +179,12 @@ class BinanceFuturesPublicData:
         if current_time.tzinfo is None or current_time.utcoffset() is None:
             raise FuturesPublicDataError("now must be timezone-aware")
         return current_time.astimezone(UTC)
+
+    @staticmethod
+    def _validated_milliseconds(value: datetime) -> int:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise FuturesPublicDataError("funding time must be timezone-aware")
+        return int(value.astimezone(UTC).timestamp() * 1000)
 
     @staticmethod
     def _display_symbol(symbol: str) -> str:

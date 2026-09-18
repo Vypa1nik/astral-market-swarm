@@ -52,6 +52,27 @@ def test_fetch_perpetual_snapshot_normalizes_prices_and_times(
     assert snapshot.next_funding_time.tzinfo == UTC
 
 
+def test_fetch_funding_history_includes_time_range_in_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[str] = []
+
+    def fake_urlopen(request: object, timeout: int) -> FakeResponse:
+        seen.append(request.full_url)  # type: ignore[attr-defined]
+        return FakeResponse([])
+
+    monkeypatch.setattr("astral_market_swarm.binance_futures_public.urlopen", fake_urlopen)
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    end = datetime(2026, 1, 2, tzinfo=UTC)
+
+    BinanceFuturesPublicData().fetch_funding_history(
+        "BTCUSDT", start_time=start, end_time=end, now=end
+    )
+
+    assert "startTime=1767225600000" in seen[0]
+    assert "endTime=1767312000000" in seen[0]
+
+
 def test_fetch_funding_history_sorts_deduplicates_and_excludes_future_rows(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
