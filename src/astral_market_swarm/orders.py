@@ -129,6 +129,19 @@ class OrderStore:
             )
             """
         )
+        self._connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS carry_funding_events (
+                symbol TEXT NOT NULL,
+                funding_timestamp TEXT NOT NULL,
+                rate TEXT NOT NULL,
+                mark_price TEXT NOT NULL,
+                short_quantity TEXT NOT NULL,
+                funding_pnl TEXT NOT NULL,
+                PRIMARY KEY (symbol, funding_timestamp)
+            )
+            """
+        )
         self._connection.commit()
 
     @_locked
@@ -286,6 +299,54 @@ class OrderStore:
                 [(f"borrowed:{symbol}", str(value)) for symbol, value in borrowed.items()],
             )
         self._connection.commit()
+
+    @_locked
+    def record_carry_funding(
+        self,
+        symbol: str,
+        funding_timestamp: datetime,
+        rate: Decimal,
+        mark_price: Decimal,
+        short_quantity: Decimal,
+    ) -> bool:
+        if (
+            not symbol.strip()
+            or funding_timestamp.tzinfo is None
+            or funding_timestamp.utcoffset() is None
+            or mark_price <= 0
+            or short_quantity <= 0
+        ):
+            raise ValueError("invalid carry funding event")
+        funding_pnl = rate * mark_price * short_quantity
+        try:
+            self._connection.execute(
+                """
+                INSERT INTO carry_funding_events (
+                    symbol, funding_timestamp, rate, mark_price, short_quantity, funding_pnl
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    symbol,
+                    funding_timestamp.isoformat(),
+                    str(rate),
+                    str(mark_price),
+                    str(short_quantity),
+                    str(funding_pnl),
+                ),
+            )
+            self._connection.commit()
+        except sqlite3.IntegrityError:
+            self._connection.rollback()
+            return False
+        return True
+
+    @_locked
+    def carry_funding_total(self, symbol: str) -> Decimal:
+        rows = self._connection.execute(
+            "SELECT funding_pnl FROM carry_funding_events WHERE symbol = ?",
+            (symbol,),
+        ).fetchall()
+        return sum((Decimal(row[0]) for row in rows), Decimal("0"))
 
     @_locked
     def close(self) -> None:
